@@ -1,0 +1,3 @@
+[submodule "src/github.com/BurntSushi/toml"]
+	path = src/github.com/BurntSushi/toml
+	url = git://github.com/BurntSushi/toml
