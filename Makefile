@@ -2,7 +2,7 @@
 TOP := $(shell pwd)
 
 all:
-	GOPATH=$(TOP) go install github.com/dizzyd/salter
+	GOPATH=$(TOP) go install salter
 
 clean:
 	@rm -rf pkg bin

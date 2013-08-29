@@ -1,74 +1,79 @@
 package main
 
 import "fmt"
-import "launchpad.net/goamz/aws"
-import "launchpad.net/goamz/ec2"
+import "path/filepath"
+import "strings"
+import "github.com/dizzyd/goamz/aws"
+import "github.com/dizzyd/goamz/ec2"
 
 type ConnCache map[string]ec2.EC2      // region -> EC2 conn
 type InstCache map[string]ec2.Instance // tag:Name -> Instance
-
-type KeyPairMap map[string]string     // keyname -> fingerprint
 type KeyCache  map[string]KeyPairMap  // region -> KeyPairMap
 
+type KeyPairMap map[string]string     // keyname -> fingerprint
 
-func (kcache KeyCache) cacheRegion(ec2 *ec2.EC2) {
-	_, found := kcache[ec2.Name]
-	if !found {
-		keys, err := ec2.KeyPairs(nil, nil)
-		if err != nil {
-			panic(fmt.Sprintf("Failed to list keypairs for %s: %s\n",
-				ec2.Name, err))
-		}
-
-		keyPairs := make(KeyPairMap)
-		for _, keyPair := range keys.Keys {
-			// Normalize the fingerprint by removing colons
-			fingerprint := strings.Replace(keyPair.Fingerprint, ":", "", -1)
-			keyPairs[keyPair.Name] = fingerprint
-		}
-
-		kcache[ec2.Name] = keyPairs
+func cacheRegion(conn *ec2.EC2, connCache *ConnCache, instCache *InstCache, keyCache *KeyCache) bool {
+	_, found := (*connCache)[conn.Region.Name]
+	if found {
+		// Already cached this region
+		return true
 	}
-}
 
-func (icache InstCache) cacheRegion(ec2 *ec2.EC2) {
-	_, found := icache[ec2.Name]
-	if !found {
-		instanceResp, err := ec2.Instances(nil, nil)
-		if err != nil {
-			panic(fmt.Sprintf("Failed to retrieve instances for %s: %s\n",
-				ec2.Name, err))
-		}
+	// Grab instances from this connection
+	instanceResp, err := conn.Instances(nil, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to retrieve instances for %s: %s\n",
+			conn.Name, err))
+	}
 
-		for _, resv := range instanceResp.Reservations {
-			for _, inst := range resv.Instances {
-				name, hasName := findTag(inst.Tags, "Name")
+	for _, resv := range instanceResp.Reservations {
+		for _, inst := range resv.Instances {
+			name, hasName := findTag(inst.Tags, "Name")
 
-				// Ignore instances without a Name tag
-				if !hasName  { continue }
+			// Ignore instances without a Name tag
+			if !hasName  { continue }
 
-				// Ignore instances that are not running
-				if inst.State.Name != "running" { continue }
+			// Ignore instances that are not running
+			if inst.State.Name != "running" { continue }
 
-				// Check for conflicts
-				oldInst, found := icache[name]
-				if found {
-					// We've found an existing instance with the same
-					// name (probably in another region!!). This is
-					// a major configuration problem that needs to
-					// be resolved by hand
-					panic(fmt.Sprintf("%s (%s, %s) conflicts with (%s, %s). " +
-						"Please resolve this conflict by shutting down " +
-						"one of these instances.",
-						name, oldInst.InstanceId, oldInst.AvailZone,
-						inst.InstanceId, inst.AvailZone))
-				}
-
-				// Cache the instance
-				icache[name] = inst
+			// Check for conflicts
+			oldInst, found := (*instCache)[name]
+			if found {
+				// We've found an existing instance with the same
+				// name (probably in another region!!). This is
+				// a major configuration problem that needs to
+				// be resolved by hand
+				panic(fmt.Sprintf("%s (%s, %s) conflicts with (%s, %s). " +
+					"Please resolve this conflict by shutting down " +
+					"one of these instances.",
+					name, oldInst.InstanceId, oldInst.AvailZone,
+					inst.InstanceId, inst.AvailZone))
 			}
+
+			// Cache the instance
+			(*instCache)[name] = inst
 		}
 	}
+
+	// Grab keys from this connection
+	keys, err := conn.KeyPairs(nil, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to list keypairs for %s: %s\n",
+			conn.Name, err))
+	}
+
+	keyPairs := make(KeyPairMap)
+	for _, keyPair := range keys.Keys {
+		// Normalize the fingerprint by removing colons
+		fingerprint := strings.Replace(keyPair.Fingerprint, ":", "", -1)
+		keyPairs[keyPair.Name] = fingerprint
+	}
+
+	(*keyCache)[conn.Name] = keyPairs
+
+	// Finally, save connection
+	(*connCache)[conn.Region.Name] = *conn
+	return false
 }
 
 func findTag(tags []ec2.Tag, name string) (string, bool) {
@@ -78,84 +83,82 @@ func findTag(tags []ec2.Tag, name string) (string, bool) {
 	return "", false
 }
 
-func loadKey(filename string) (*rsa.PrivateKey, error) {
-	if os.IsExist(filename) {
-		// Read the whole PEM file
-		data, err := ioutil.ReadFile(filepath.join(dataDir, keyname + ".pem"))
-		if err != nil {
-			return nil, err
-		}
 
-		// Decode from PEM
-		block, _ := pem.Decode(data)
-		if block == nil {
-			return nil, fmt.Errorf("Failed to decode key from %s: %s\n",
-				filename, err)
-		}
+func initKeyPair(keyname string, conn *ec2.EC2, keys *KeyPairMap, dataDir string) {
+	filename := filepath.Join(dataDir, keyname + ".pem")
 
-		// Parse out the private key from DER format
-		return x509.ParsePKCS1PrivateKey()
-	} else {
-		return nil, nil
-	}
-}
+	// Lookup the remote fingerprint
+	remoteFingerprint, existsOnAws := (*keys)[keyname]
 
-func keyFingerprint(filename string) string {
-
-	privKey, err := loadKey(filename)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to load key %s: %s\n", [filename, err]))
+	// If the key was generated by AWS, it will return a SHA1 fingeprint of
+	// PRIVATE key (40 bytes long); otherwise it will return a MD5 fingerprint
+	// of the PUBLIC key.
+	localFingerprint, localPrivFingerprint := keyFingerprint(filename)
+	if len(remoteFingerprint) > 32 {
+		localFingerprint = localPrivFingerprint
 	}
 
-	if privKey == nil {
-		// No key file exists; empty string as a fingerprint
-		return ""
-	}
-
-	// Key exists, cast it into public form and marshal into DER for hashing
-	derPubKey := x509.MarshalPKIXPublicKey(privKey.(rsa.PublicKey))
-	return fmt.Sprintf("%x", md5.New().Sum(derPubKey))
-}
-
-func generateKeyPair(keyname string, conn *ec2.EC2, keys *KeyPairMap, dataDir string) {
-	filename := filepath.join(dataDir, keyname + ".pem")
-
-	// Try to load and compute the key from local storage
-	localFingerprint := keyFingerprint(filename)
-
-	remoteFingerprint, existsOnAws := keys[keyname]
-
-	// If the key exists on AWS and the fingerprints match, nothing more to do
+	// If the key exists on AWS and matches our local key, nothing more to do
 	if existsOnAws && localFingerprint == remoteFingerprint {
 		return
 	}
 
-	// If the key exists on AWS and not locally, manual intervention is required
+	// If the key exists on AWS, but not locally, manual intervention required
 	if existsOnAws && localFingerprint == "" {
+		panic(fmt.Sprintf("Key %s exists on AWS, but not locally!", keyname))
+	}
 
-	} else if existsOnAws && remoteFingerprint != localFingerprint {
-		// Key exists on AWS, but does not match local fingerprint
-	} else if 
-	
+	// If the key exists on AWS, but doesn't match our local key, manual intervention required
+	if existsOnAws && localFingerprint != remoteFingerprint {
+		panic(fmt.Sprintf("Key %s exists on AWS, but has a different fingerprint " +
+			"than our local copy! Local: %s != %s :Remote",
+			keyname, localFingerprint, remoteFingerprint))
+	}
 
-	// Recoverable states:
-	// - Key does not exist on AWS, but does exist locally -> Import to AWS
-	// - Key does not exist anywhere -> Create + Import
+	// If the key doesn't exist locally, generate a new one
+	if localFingerprint == "" {
+		err := generateKey(filename, 2048)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to generate key %s: %s\n", filename, err))
+		}
+	}
+
+	// Load the public key in PEM encoded format
+	pubKey, err := loadPublicKey(filename)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to load public key from %s: %s\n", filename, err))
+	}
+
+	// Import key to AWS
+	resp, err := conn.ImportKeyPair(keyname, pubKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to import public key %s to AWS: %s\n", keyname, err))
+	}
+
+	// Add the fingerprint to our local cache
+	(*keys)[keyname] = strings.Replace(resp.KeyFingerprint, ":", "", -1)
 }
 
 func launch(config Config) bool {
 	// Spin up a cache of connections for the nodes we're launching
+	conns     := make(ConnCache)
 	instances := make(InstCache)
 	keypairs  := make(KeyCache)
+	availKeys := make(map[string]bool)
 
 	// Walk all the target nodes, caching info from their region and also
 	// setting up keypairs
 	for _, node := range config.Targets {
 		conn := ec2.New(config.AwsAuth, aws.Regions[node.Region])
-		instances.cacheRegion(conn)
-		keypairs.cacheRegion(conn)
+		cacheRegion(conn, &conns, &instances, &keypairs)
 
-		generateKeyPair(node.KeyName, conn, keypairs[conn.Name], config.DataDir)
+		keys := keypairs[conn.Name]
+		keyName := node.Region + "-" + node.Keyname
+		_, found := availKeys[keyName]
+		if !found {
+			initKeyPair(keyName, conn, &keys, config.DataDir)
+			availKeys[keyName] = true
+		}
 	}
 
 	// Setup a channel for queuing up nodes to launch and another
@@ -187,8 +190,6 @@ func launch(config Config) bool {
 	for i := 0; i < config.MaxConcurrent; i++ {
 		<- shutdownQueue
 	}
-
-	fmt.Printf("All done!\n")
 
 	return true
 }

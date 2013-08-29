@@ -6,7 +6,7 @@ import "os"
 import "path/filepath"
 import "crypto/md5"
 import "github.com/BurntSushi/toml"
-import "launchpad.net/goamz/aws"
+import "github.com/dizzyd/goamz/aws"
 
 type Config struct {
 	Nodes     map[string]NodeConfig
