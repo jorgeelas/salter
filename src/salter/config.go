@@ -10,6 +10,7 @@ import "github.com/dizzyd/goamz/aws"
 
 type Config struct {
 	Nodes     map[string]NodeConfig
+	Tags      map[string]TagConfig
 	Aws       AwsConfig
 	Raw       interface{}
 	Targets   map[string]NodeConfig
@@ -19,6 +20,7 @@ type Config struct {
 
 	MaxConcurrent int
 }
+
 
 type NodeConfig struct {
 	Name    string
@@ -30,7 +32,10 @@ type NodeConfig struct {
 	Ami     string
 	SGroup  string
 	Keyname string
+	Tags    map[string]string
 }
+
+type TagConfig map[string]string
 
 type AwsConfig struct {
 	Username string `toml: "ssh_username"`
@@ -56,16 +61,37 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	for id, node := range config.Nodes {
 		node.Name = id
 		if node.Count > 0 {
+			// Multiple instances of this type of node have been
+			// requested. It's possible in the config file to
+			// override individual specifications for nodes, so as
+			// we go through and dynamically generate nodes, see if
+			// an override already exists and use it
 			for i := 0; i < node.Count; i++ {
-				n := node
-				n.applyAwsDefaults(config.Aws)
-				n.Count = 0
 				key := fmt.Sprintf("%s%d", id, i)
+
+				// Get the config specific to this key, or fallback
+				// to template base
+				n, exists := config.Nodes[key]
+				if !exists { n = node }
+
+				// Get the tags specific to this generated node,
+				// or fallback to generic identifier
+				tags, exists := config.Tags[key]
+				if !exists { tags = config.Tags[id] }
+
+				n.applyAwsDefaults(config.Aws)
+				n.Name = key
+				n.Count = 0
+				n.Tags = tags
+
 				resolvedNodes[key] = n
+				fmt.Printf("%s = %+v\n", key, n)
 			}
 		} else {
 			node.applyAwsDefaults(config.Aws)
+			node.Tags = config.Tags[id]
 			resolvedNodes[id] = node
+			fmt.Printf("%s = %+v\n", id, node)
 		}
 	}
 
