@@ -3,6 +3,7 @@ package main
 import "fmt"
 import "path/filepath"
 import "strings"
+import "time"
 import "github.com/dizzyd/goamz/aws"
 import "github.com/dizzyd/goamz/ec2"
 
@@ -153,7 +154,7 @@ func launch(config Config) bool {
 		cacheRegion(conn, &conns, &instances, &keypairs)
 
 		keys := keypairs[conn.Name]
-		keyName := node.Region + "-" + node.Keyname
+		keyName := node.Region + "-" + node.KeyName
 		_, found := availKeys[keyName]
 		if !found {
 			initKeyPair(keyName, conn, &keys, config.DataDir)
@@ -203,10 +204,53 @@ func launchNode(node NodeConfig, config Config, instCache InstCache) {
 		return
 	}
 
-	// Open the connection
-	//conn := ec2.New(config.AwsAuth, aws.Regions[node.Region])
+	fmt.Printf("Launching %s = %+v\n", node.Name, node)
 
-	fmt.Printf("Launching %s\n", node.Name)
+	runInst := ec2.RunInstances {
+		ImageId: node.Ami,
+		KeyName: node.KeyName,
+		InstanceType: node.Flavor }
+	conn := ec2.New(config.AwsAuth, aws.Regions[node.Region])
+	runResp, err := conn.RunInstances(&runInst)
+	if err != nil {
+		fmt.Printf("%s: %+v\n", node.Name, err)
+		return
+	}
+
+	// Extract instanceId
+	instanceId := runResp.Instances[0].InstanceId
+
+	// Instance is now running; apply any tags
+	_, err = conn.CreateTags([]string { instanceId }, node.ec2Tags())
+	if err != nil {
+		fmt.Printf("Failed to apply tags to %s: %+v\n", node.Name, err)
+		return
+	}
+
+	// Poll the instance ID, waiting for it to either start running or fail
+	for {
+		// Wait for 7 seconds
+		time.Sleep(7 * time.Second)
+
+		// Check the status
+		statusResp, err := conn.Instances([]string { instanceId }, nil)
+		if err != nil {
+			fmt.Printf("Instances list failed: %+v\n", err)
+			return
+		}
+
+		state := statusResp.Reservations[0].Instances[0].State.Name
+		fmt.Printf("%s: %s\n", node.Name, state)
+		if state == "running" {
+			break
+		} else if state == "pending" {
+			continue
+		} else {
+			// Other state; indicative of a failed launch
+			fmt.Printf("Failed to launch instance: %s = %d\n", node.Name, state)
+			return
+		}
+	}
 
 
 }

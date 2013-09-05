@@ -7,6 +7,7 @@ import "path/filepath"
 import "crypto/md5"
 import "github.com/BurntSushi/toml"
 import "github.com/dizzyd/goamz/aws"
+import "github.com/dizzyd/goamz/ec2"
 
 type Config struct {
 	Nodes     map[string]NodeConfig
@@ -31,7 +32,7 @@ type NodeConfig struct {
 	Zone    string
 	Ami     string
 	SGroup  string
-	Keyname string
+	KeyName string
 	Tags    map[string]string
 }
 
@@ -43,7 +44,7 @@ type AwsConfig struct {
 	Region   string
 	Ami      string
 	SGroup   string
-	Keyname  string
+	KeyName  string
 }
 
 type SGroupConfig struct {
@@ -105,7 +106,7 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 
 	// Initialize our result
 	config.AwsAuth = auth
-	config.MaxConcurrent = 2
+	config.MaxConcurrent = 5
 	config.Nodes = resolvedNodes
 	config.Raw = raw
 	config.Targets = make(map[string]NodeConfig)
@@ -132,7 +133,15 @@ func (node *NodeConfig) applyAwsDefaults(aws AwsConfig) {
 	if node.Ami     == "" { node.Ami = aws.Ami }
 	if node.Region  == "" { node.Region = aws.Region }
 	if node.SGroup  == "" { node.SGroup = aws.SGroup }
-	if node.Keyname == "" { node.Keyname = aws.Keyname }
+	if node.KeyName == "" { node.KeyName = aws.KeyName }
+}
+
+func (node *NodeConfig) ec2Tags() []ec2.Tag {
+	result := []ec2.Tag{ ec2.Tag{ Key: "Name", Value: node.Name }}
+	for key, value := range node.Tags {
+		result = append(result, ec2.Tag{ Key: key, Value: value })
+	}
+	return result
 }
 
 func (config* Config) initDataDir() {
