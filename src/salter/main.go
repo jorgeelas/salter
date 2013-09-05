@@ -57,15 +57,25 @@ func main() {
 		os.Exit(-1)
 	}
 
-	fmt.Printf("Config file: %+v\n", configFile)
-	fmt.Printf("Targets: %+v\n", targets)
-	fmt.Printf("All: %+v\n", all)
-	fmt.Printf("Command: %+v\n", flag.Arg(0))
-	fmt.Printf("Config: %+v\n", config)
-	fmt.Printf("---\nTargetNodes: %+v\n", config.SGroups)
+	// Walk all the target nodes, caching info about their regions
+	for _, node := range config.Targets {
+		_, err := GetRegion(node.Region, config)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to load region for %s: %+v\n", node.Region, err))
+		}
+	}
+
+	// fmt.Printf("Config file: %+v\n", configFile)
+	// fmt.Printf("Targets: %+v\n", targets)
+	// fmt.Printf("All: %+v\n", all)
+	// fmt.Printf("Command: %+v\n", flag.Arg(0))
+	// fmt.Printf("Config: %+v\n", config)
+	// fmt.Printf("---\nTargetNodes: %+v\n", config.SGroups)
 
 	switch flag.Arg(0) {
 	case "launch":
 		launch(config)
+	case "teardown":
+		teardown(config)
 	}
 }
