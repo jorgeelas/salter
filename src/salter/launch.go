@@ -5,8 +5,6 @@ import "time"
 import "github.com/dizzyd/goamz/aws"
 import "github.com/dizzyd/goamz/ec2"
 
-type RegionCache map[string]Region
-
 func launch(config Config) bool {
 	// Setup a channel for queuing up nodes to launch and another
 	// for shutdown notification
