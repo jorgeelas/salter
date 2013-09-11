@@ -1,16 +1,10 @@
 package main
 
-// Action
-// - launch
-// - teardown
-// - cmd
-// - ssh
-// - highstate
-
 import "fmt"
 import "flag"
 import "strings"
 import "os"
+import "syscall"
 
 type Targets []string
 
@@ -25,10 +19,8 @@ func (t *Targets) Set(value string) error {
 	return nil
 }
 
-var config Config
-var configFile string
-var targets Targets
-var all bool
+var G_CONFIG  Config
+var G_REGIONS map[string]*Region
 
 func usage() {
 	fmt.Println("usage: salter <options> <command>")
@@ -36,9 +28,17 @@ func usage() {
 	os.Exit(-1)
 }
 
+func init() {
+	G_REGIONS = make(map[string]*Region)
+}
+
 func main() {
+	var targets Targets
+	var configFile string
+	var all bool
+
 	// Setup command line flags
-	flag.StringVar(&configFile, "f", "salter.cfg", "Configuration file")
+	flag.StringVar(&configFile, "c", "salter.cfg", "Configuration file")
 	flag.BoolVar(&all, "a", false, "Apply operations to all nodes")
 	flag.Var(&targets, "n", "Target nodes for the operation (overrides -a flag)")
 
@@ -57,25 +57,65 @@ func main() {
 		os.Exit(-1)
 	}
 
+	// Make config globally available
+	G_CONFIG = config
+
 	// Walk all the target nodes, caching info about their regions
-	for _, node := range config.Targets {
-		_, err := GetRegion(node.Region, config)
+	for _, node := range G_CONFIG.Targets {
+		_, err := GetRegion(node.RegionId)
 		if err != nil {
-			panic(fmt.Sprintf("Failed to load region for %s: %+v\n", node.Region, err))
+			panic(fmt.Sprintf("Failed to load region for %s: %+v\n",
+				node.RegionId, err))
 		}
 	}
 
-	// fmt.Printf("Config file: %+v\n", configFile)
-	// fmt.Printf("Targets: %+v\n", targets)
-	// fmt.Printf("All: %+v\n", all)
-	// fmt.Printf("Command: %+v\n", flag.Arg(0))
-	// fmt.Printf("Config: %+v\n", config)
-	// fmt.Printf("---\nTargetNodes: %+v\n", config.SGroups)
-
 	switch flag.Arg(0) {
 	case "launch":
-		launch(config)
+		launch()
 	case "teardown":
-		teardown(config)
+		teardown()
+	case "ssh":
+		sshto()
+	}
+}
+
+
+func sshto() {
+	count := len(G_CONFIG.Targets)
+	if count > 1 || count < 1 {
+		fmt.Printf("Only one node may be used with the ssh command.\n")
+		return
+	}
+
+	for _, node := range G_CONFIG.Targets {
+		err := node.Update()
+		if err != nil {
+			fmt.Printf("Unable to retrieve status of %s from AWS: %+v\n",
+				node.Name, err)
+			return
+		}
+
+		if !node.IsRunning() {
+			fmt.Printf("Node %s is not running.\n", node.Name)
+			return
+		}
+
+		key := RegionKey(node.KeyName, node.RegionId)
+
+		args := []string {
+			"ssh", "-i", key.Filename,
+			"-o", "LogLevel=FATAL",
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "UserKnownHostsFile=/dev/null",
+			"-o", "ForwardAgent=yes",
+			"-l", G_CONFIG.Aws.Username,
+			node.Instance.DNSName }
+
+		env := []string {
+			"TERM=" + os.Getenv("TERM"),
+		}
+
+		fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
+		syscall.Exec("/usr/bin/ssh", args, env)
 	}
 }

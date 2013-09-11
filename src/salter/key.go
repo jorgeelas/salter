@@ -11,11 +11,15 @@ import "io/ioutil"
 import "crypto/rand"
 import "crypto/md5"
 import "path/filepath"
+import "io"
+import "crypto"
+import "code.google.com/p/go.crypto/ssh"
 
 type Key struct {
-	Name string
-	Key  rsa.PrivateKey
+	Name        string
+	Key         rsa.PrivateKey
 	Fingerprint string
+	Filename    string
 }
 
 // Structs/constants from Go crypto/x509/pkcs8.go
@@ -86,14 +90,14 @@ func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
 		}
 
 		// Successfully validated key fingerprint; return the key
-		return &Key { Name: keyName, Key: *privKey }, nil
+		return &Key{ Name: keyName, Key: *privKey, Filename: filename }, nil
 	} else {
 		return nil, fmt.Errorf("Missing file for %s: %s\n", filename, remoteFingerprint)
 	}
 }
 
 
-// Generate a new RSA key, store in PKCS-1 PEM file
+// Generate a new RSA key, serializing to a PKCS-1 PEM file
 func generateKey(filename string, bits int) error {
 	privKey, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
@@ -107,18 +111,43 @@ func generateKey(filename string, bits int) error {
 }
 
 
-// // Load a PKCS-1 private key from disk and extract the public portion of it
-// func loadPublicKey(filename string) (string, error) {
-// 	privKey, err := loadKey(filename)
-// 	if err != nil {
-// 		return "", err
-// 	}
+// Construct a public key authentictor suitable for using in a ssh.ClientConfig
+func PublicKeyAuth(k Key) []ssh.ClientAuth {
+	kc := new(keychain)
+	kc.keys = append(kc.keys, &(k.Key))
+	return []ssh.ClientAuth { ssh.ClientAuthKeyring(kc) }
+}
 
-// 	// PEM-encode the public key portion of the data and return in
-// 	pubBytes, err := x509.MarshalPKIXPublicKey(&(privKey.PublicKey))
+//
+// SSH-specific interface for performing client auth
+//
+type keychain struct {
+	keys []interface{}
+}
 
-// 	if err != nil {
-// 		return "", err
-// 	}
-// 	return base64.StdEncoding.EncodeToString(pubBytes), nil
-// }
+func (k *keychain) Key(i int) (interface{}, error) {
+	if i < 0 || i >= len(k.keys) {
+		return nil, nil
+	}
+
+	switch key := k.keys[i].(type) {
+	case *rsa.PrivateKey:
+		return &key.PublicKey, nil
+	default:
+		return nil, fmt.Errorf("keychain.Key: unsupported key type - %+v\n",
+			k.keys[i])
+	}
+}
+
+func (k *keychain) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
+	hashFunc := crypto.SHA1
+	h := hashFunc.New()
+	h.Write(data)
+	digest := h.Sum(nil)
+	switch key := k.keys[i].(type) {
+	case *rsa.PrivateKey:
+		return rsa.SignPKCS1v15(rand, key, hashFunc, digest)
+	}
+	return nil, fmt.Errorf("keychain.Sign: unsupported key type - %+v\n",
+		k.keys[i])
+}

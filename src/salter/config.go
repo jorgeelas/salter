@@ -7,41 +7,30 @@ import "path/filepath"
 import "crypto/md5"
 import "github.com/BurntSushi/toml"
 import "github.com/dizzyd/goamz/aws"
-import "github.com/dizzyd/goamz/ec2"
+import "text/template"
+import "bytes"
 
 type Config struct {
-	Nodes     map[string]NodeConfig
-	Tags      map[string]TagConfig
-	Aws       AwsConfig
-	Raw       interface{}
-	Targets   map[string]NodeConfig
-	SGroups   map[string]SGroupConfig
-	AwsAuth   aws.Auth
-	DataDir   string
+	Nodes        map[string]Node
+	Tags         map[string]TagConfig
+	Aws          AwsConfig
+	Raw          interface{}
+	Targets      map[string]Node
+	SGroups      map[string]SGroupConfig
+	AwsAuth      aws.Auth
+	DataDir      string
+	UserDataFile string
 
-	MaxConcurrent int
-}
-
-
-type NodeConfig struct {
-	Name    string
-	Roles   []string
-	Count   int
-	Flavor  string
-	Region  string
-	Zone    string
-	Ami     string
-	SGroup  string
-	KeyName string
-	Tags    map[string]string
+	UserDataTemplate template.Template
+	MaxConcurrent    int
 }
 
 type TagConfig map[string]string
 
 type AwsConfig struct {
-	Username string `toml: "ssh_username"`
+	Username string `toml:"ssh_username"`
 	Flavor   string
-	Region   string
+	RegionId string `toml:"region"`
 	Ami      string
 	SGroup   string
 	KeyName  string
@@ -58,7 +47,7 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	}
 
 	// Expand the list of nodes so that we have an entry per individual node
-	resolvedNodes := make(map[string]NodeConfig)
+	resolvedNodes := make(map[string]Node)
 	for id, node := range config.Nodes {
 		node.Name = id
 		if node.Count > 0 {
@@ -67,7 +56,7 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 			// override individual specifications for nodes, so as
 			// we go through and dynamically generate nodes, see if
 			// an override already exists and use it
-			for i := 0; i < node.Count; i++ {
+			for i := 1; i <= node.Count; i++ {
 				key := fmt.Sprintf("%s%d", id, i)
 
 				// Get the config specific to this key, or fallback
@@ -84,12 +73,14 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 				n.Name = key
 				n.Count = 0
 				n.Tags = tags
+				n.Config = &config
 
 				resolvedNodes[key] = n
 				fmt.Printf("%s = %+v\n", key, n)
 			}
 		} else {
 			node.applyAwsDefaults(config.Aws)
+			node.Config = &config
 			node.Tags = config.Tags[id]
 			resolvedNodes[id] = node
 			fmt.Printf("%s = %+v\n", id, node)
@@ -103,13 +94,22 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 		return
 	}
 
+	// If a user-data file is specified, use that to construct a template
+	userDataTemplate, err := template.ParseFiles("bootstrap/user.data")
+	if err != nil {
+		fmt.Printf("Failed to load user data template from %s: %+v\n",
+			config.UserDataFile, err)
+		return
+	}
+	config.UserDataTemplate = *userDataTemplate
+
 
 	// Initialize our result
 	config.AwsAuth = auth
 	config.MaxConcurrent = 5
 	config.Nodes = resolvedNodes
 	config.Raw = raw
-	config.Targets = make(map[string]NodeConfig)
+	config.Targets = make(map[string]Node)
 
 	// Identify all targeted nodes
 	switch {
@@ -128,21 +128,50 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	return
 }
 
-func (node *NodeConfig) applyAwsDefaults(aws AwsConfig) {
-	if node.Flavor  == "" { node.Flavor = aws.Flavor }
-	if node.Ami     == "" { node.Ami = aws.Ami }
-	if node.Region  == "" { node.Region = aws.Region }
-	if node.SGroup  == "" { node.SGroup = aws.SGroup }
-	if node.KeyName == "" { node.KeyName = aws.KeyName }
+func (node *Node) applyAwsDefaults(aws AwsConfig) {
+	if node.Flavor    == "" { node.Flavor = aws.Flavor }
+	if node.Ami       == "" { node.Ami = aws.Ami }
+	if node.RegionId  == "" { node.RegionId = aws.RegionId }
+	if node.SGroup    == "" { node.SGroup = aws.SGroup }
+	if node.KeyName   == "" { node.KeyName = aws.KeyName }
 }
 
-func (node *NodeConfig) ec2Tags() []ec2.Tag {
-	result := []ec2.Tag{ ec2.Tag{ Key: "Name", Value: node.Name }}
-	for key, value := range node.Tags {
-		result = append(result, ec2.Tag{ Key: key, Value: value })
-	}
-	return result
+
+type UserDataVars struct {
+	Hostname string
+	SaltMasterIP string
+	Roles []string
+	IsMaster bool
 }
+
+func (config *Config) generateUserData(host string, roles []string, masterIp string) ([]byte, error) {
+	var userDataBuf bytes.Buffer
+	err := config.UserDataTemplate.Execute(&userDataBuf,
+		UserDataVars{
+			Hostname: host,
+			SaltMasterIP: masterIp,
+			Roles: roles,
+			IsMaster: (masterIp == "127.0.0.1"),
+		})
+	if err != nil {
+		fmt.Printf("Failed to generate user-data for %s: %+v\n", host, err)
+		return nil, err
+	}
+	return userDataBuf.Bytes(), nil
+}
+
+
+func (config *Config) findNodeByRole(role string) *Node {
+	for _, node := range config.Nodes {
+		for _, r := range node.Roles {
+			if r == role {
+				return &node
+			}
+		}
+	}
+	return nil
+}
+
 
 func (config* Config) initDataDir() {
 	// The data directory is always suffixed with a hash of the AWS access

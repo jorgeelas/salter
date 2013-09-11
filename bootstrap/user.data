@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Set hostname for this machine
+echo "{{.Hostname}}" >/etc/hostname
+hostname `cat /etc/hostname`
+
+# Append loopback IP for hostname to /etc/hosts
+echo "{{printf "%s\t%s" "127.0.1.1" .Hostname}}" >> /etc/hosts
+
+# Append "salt" IP address to /etc/hosts
+echo "{{printf "%s\t%s" .SaltMasterIP "salt"}}" >> /etc/hosts
+
+# Write roles to /etc/salt/grains
+mkdir -p /etc/salt
+echo """
+role:
+{{range $role := .Roles}}{{printf " - %s\n" $role}}{{end}}
+""" > /etc/salt/grains
+
+# Install latest salt stack
+{{if .IsMaster}}
+curl -L http://bootstrap.saltstack.org | sudo sh -s -- -M stable
+{{else}}
+curl -L http://bootstrap.saltstack.org | sudo sh -s -- stable
+{{end}}
+
+# Stop the salt-minion; once keys are distributed, we'll restart it
+stop salt-minion
