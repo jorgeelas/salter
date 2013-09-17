@@ -109,43 +109,42 @@ func main() {
 
 
 func sshto() {
-	count := len(G_CONFIG.Targets)
-	if count > 1 || count < 1 {
+	target := fun.Keys(G_CONFIG.Targets).([]string)
+	if len(target) != 1 {
 		fmt.Printf("Only one node may be used with the ssh command.\n")
 		return
 	}
 
-	for _, node := range G_CONFIG.Targets {
-		err := node.Update()
-		if err != nil {
-			fmt.Printf("Unable to retrieve status of %s from AWS: %+v\n",
-				node.Name, err)
-			return
-		}
-
-		if !node.IsRunning() {
-			fmt.Printf("Node %s is not running.\n", node.Name)
-			return
-		}
-
-		key := RegionKey(node.KeyName, node.RegionId)
-
-		args := []string {
-			"ssh", "-i", key.Filename,
-			"-o", "LogLevel=FATAL",
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "UserKnownHostsFile=/dev/null",
-			"-o", "ForwardAgent=yes",
-			"-l", G_CONFIG.Aws.Username,
-			node.Instance.DNSName }
-
-		env := []string {
-			"TERM=" + os.Getenv("TERM"),
-		}
-
-		fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
-		syscall.Exec("/usr/bin/ssh", args, env)
+	node := G_CONFIG.Targets[target[0]]
+	err := node.Update()
+	if err != nil {
+		fmt.Printf("Unable to retrieve status of %s from AWS: %+v\n",
+			node.Name, err)
+		return
 	}
+
+	if !node.IsRunning() {
+		fmt.Printf("Node %s is not running.\n", node.Name)
+		return
+	}
+
+	key := RegionKey(node.KeyName, node.RegionId)
+
+	args := []string {
+		"ssh", "-i", key.Filename,
+		"-o", "LogLevel=FATAL",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "ForwardAgent=yes",
+		"-l", G_CONFIG.Aws.Username,
+		node.Instance.DNSName }
+
+	env := []string {
+		"TERM=" + os.Getenv("TERM"),
+	}
+
+	fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
+	syscall.Exec("/usr/bin/ssh", args, env)
 }
 
 
