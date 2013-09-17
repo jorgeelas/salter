@@ -31,7 +31,10 @@ type pkcs8 struct {
 
 var asn1TagNull       = 5
 var oidPublicKeyRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
-var rsaAlgorithmIdentifier = pkix.AlgorithmIdentifier { Algorithm: oidPublicKeyRSA, Parameters: asn1.RawValue{Tag: asn1TagNull}}
+var rsaAlgorithmIdentifier = pkix.AlgorithmIdentifier {
+	Algorithm: oidPublicKeyRSA,
+	Parameters: asn1.RawValue{Tag: asn1TagNull},
+}
 
 // Primitive PKCS-8 encoder for a RSA private key
 func marshalToPKCS8(privKey *rsa.PrivateKey) []byte {
@@ -54,7 +57,7 @@ func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
 		// Decode from PEM
 		block, _ := pem.Decode(data)
 		if block == nil {
-			return nil, fmt.Errorf("Failed to decode key from %s: %s\n",
+			return nil, fmt.Errorf("Failed to decode key from %s: %s",
 				filename, err)
 		}
 
@@ -73,7 +76,7 @@ func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
 			h.Write(marshalToPKCS8(privKey))
 			privFingerprint := fmt.Sprintf("%x", h.Sum(nil))
 			if privFingerprint != remoteFingerprint {
-				return nil, fmt.Errorf("Mismatched private fingerprint for %s: %s != %s\n",
+				return nil, fmt.Errorf("Mismatched private fingerprint for %s: %s != %s",
 					keyName, privFingerprint, remoteFingerprint)
 			}
 		} else {
@@ -83,7 +86,7 @@ func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
 			h.Write(pub)
 			pubFingerprint := fmt.Sprintf("%x", h.Sum(nil))
 			if pubFingerprint != remoteFingerprint {
-				return nil, fmt.Errorf("Mismatched public fingerprint for %s: %s != %s\n",
+				return nil, fmt.Errorf("Mismatched public fingerprint for %s: %s != %s",
 					keyName, pubFingerprint, remoteFingerprint)
 
 			}
@@ -92,7 +95,7 @@ func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
 		// Successfully validated key fingerprint; return the key
 		return &Key{ Name: keyName, Key: *privKey, Filename: filename }, nil
 	} else {
-		return nil, fmt.Errorf("Missing file for %s: %s\n", filename, remoteFingerprint)
+		return nil, fmt.Errorf("Missing file for %s: %s", filename, remoteFingerprint)
 	}
 }
 

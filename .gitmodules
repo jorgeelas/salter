@@ -4,3 +4,6 @@
 [submodule "src/github.com/dizzyd/goamz"]
 	path = src/github.com/dizzyd/goamz
 	url = git://github.com/dizzyd/goamz
+[submodule "src/github.com/BurntSushi/ty"]
+	path = src/github.com/BurntSushi/ty
+	url = git://github.com/BurntSushi/ty

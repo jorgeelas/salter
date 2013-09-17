@@ -76,14 +76,12 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 				n.Config = &config
 
 				resolvedNodes[key] = n
-				fmt.Printf("%s = %+v\n", key, n)
 			}
 		} else {
 			node.applyAwsDefaults(config.Aws)
 			node.Config = &config
 			node.Tags = config.Tags[id]
 			resolvedNodes[id] = node
-			fmt.Printf("%s = %+v\n", id, node)
 		}
 	}
 

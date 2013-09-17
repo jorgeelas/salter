@@ -4,7 +4,11 @@ import "fmt"
 import "flag"
 import "strings"
 import "os"
+import "sort"
 import "syscall"
+import "path"
+import "log"
+import "github.com/BurntSushi/ty/fun"
 
 type Targets []string
 
@@ -21,6 +25,7 @@ func (t *Targets) Set(value string) error {
 
 var G_CONFIG  Config
 var G_REGIONS map[string]*Region
+var G_DIR     string
 
 func usage() {
 	fmt.Println("usage: salter <options> <command>")
@@ -29,6 +34,7 @@ func usage() {
 }
 
 func init() {
+	G_DIR = path.Join(os.ExpandEnv("$HOME"), ".salter")
 	G_REGIONS = make(map[string]*Region)
 }
 
@@ -36,6 +42,21 @@ func main() {
 	var targets Targets
 	var configFile string
 	var all bool
+
+	// Initialize data directory if it doesn't already exist
+	os.Mkdir(G_DIR, 0700)
+
+	// Setup logging subsystem
+	logFilename := path.Join(G_DIR, "log")
+	logFile, err := os.OpenFile(logFilename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		fmt.Printf("Could not open %s: %s\n", logFilename, err)
+		os.Exit(1)
+	}
+	defer logFile.Close()
+
+	// Direct all logging output to the log file
+	log.SetOutput(logFile)
 
 	// Setup command line flags
 	flag.StringVar(&configFile, "c", "salter.cfg", "Configuration file")
@@ -48,6 +69,11 @@ func main() {
 	// If parse failed, bail
 	if !flag.Parsed() || flag.NArg() != 1 {
 		usage()
+	}
+
+	// Special cases for -a / -n
+	if flag.Arg(0) == "hosts" {
+		all = true
 	}
 
 	// Initialize the config file
@@ -76,6 +102,8 @@ func main() {
 		teardown()
 	case "ssh":
 		sshto()
+	case "hosts":
+		hosts()
 	}
 }
 
@@ -117,5 +145,23 @@ func sshto() {
 
 		fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
 		syscall.Exec("/usr/bin/ssh", args, env)
+	}
+}
+
+
+func hosts() {
+	// Update all the targets with latest instance info
+	pForEachValue(G_CONFIG.Targets, (*Node).Update, 10)
+
+	// Get a list of all the keys and sort them
+	names := fun.Keys(G_CONFIG.Targets).([]string)
+	sort.Strings(names)
+
+	// Print each entry
+	for _, name := range names {
+		node := G_CONFIG.Targets[name]
+		if node.Instance != nil {
+			fmt.Printf("%s\t%s\n", node.Instance.IpAddress, node.Name)
+		}
 	}
 }
