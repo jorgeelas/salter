@@ -14,6 +14,7 @@ type Config struct {
 	Nodes        map[string]Node
 	Tags         map[string]TagConfig
 	Aws          AwsConfig
+	Salt         SaltConfig
 	Raw          interface{}
 	Targets      map[string]Node
 	SGroups      map[string]SGroupConfig
@@ -38,6 +39,10 @@ type AwsConfig struct {
 
 type SGroupConfig struct {
 	Rules []string
+}
+
+type SaltConfig struct {
+	RootDir string `toml:"root"`
 }
 
 func NewConfig(filename string, targets []string, all bool) (config Config, err error) {

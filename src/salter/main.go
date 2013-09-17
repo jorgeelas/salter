@@ -8,6 +8,7 @@ import "sort"
 import "syscall"
 import "path"
 import "log"
+import "os/exec"
 import "github.com/BurntSushi/ty/fun"
 
 type Targets []string
@@ -86,8 +87,8 @@ func main() {
 	// Make config globally available
 	G_CONFIG = config
 
-	// Walk all the target nodes, caching info about their regions
-	for _, node := range G_CONFIG.Targets {
+	// Walk all the nodes, caching info about their regions
+	for _, node := range G_CONFIG.Nodes {
 		_, err := GetRegion(node.RegionId)
 		if err != nil {
 			panic(fmt.Sprintf("Failed to load region for %s: %+v\n",
@@ -104,6 +105,8 @@ func main() {
 		sshto()
 	case "hosts":
 		hosts()
+	case "upload":
+		upload()
 	}
 }
 
@@ -162,5 +165,49 @@ func hosts() {
 		if node.Instance != nil {
 			fmt.Printf("%s\t%s\n", node.Instance.IpAddress, node.Name)
 		}
+	}
+}
+
+func upload() {
+	// Find the master node
+	node := G_CONFIG.findNodeByRole("saltmaster")
+	if node == nil {
+		fmt.Printf("Could not find a node with saltmaster role!\n")
+		return
+	}
+
+	// Get latest info from AWS
+	err := node.Update()
+	if err != nil {
+		fmt.Printf("Failed to update info for %s: %+v\n", node.Name, err)
+		return
+	}
+
+	// If the node isn't running, bail
+	if !node.IsRunning() {
+		fmt.Printf("%s is not running.\n", node.Name)
+		return
+	}
+
+	// Lookup key for the node/region
+	key := RegionKey(node.KeyName, node.RegionId)
+
+	// Generate SSH sub-command
+	sshCmd := fmt.Sprintf("ssh -i %s -o LogLevel=FATAL -o StrictHostKeyChecking=no "+
+		"-o UserKnownHostsFile=/dev/null", key.Filename)
+
+	// Run rsync
+	rsync := exec.Command("rsync", "-avz",
+		"--rsync-path=sudo rsync",
+		"-e", sshCmd,
+		G_CONFIG.Salt.RootDir + "/",
+		fmt.Sprintf("%s@%s:/srv/salt", G_CONFIG.Aws.Username, node.Instance.DNSName))
+	rsync.Stdout = os.Stdout
+	rsync.Stderr = os.Stdout
+	fmt.Printf("Uploading %s to %s:/srv/salt...\n", G_CONFIG.Salt.RootDir, node.Instance.IpAddress)
+	err = rsync.Run()
+	if err != nil {
+		fmt.Printf("Rsync failed: %+v\n", err)
+		return
 	}
 }
