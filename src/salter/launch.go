@@ -3,6 +3,7 @@ package main
 import "fmt"
 import "time"
 import "code.google.com/p/go.crypto/ssh"
+import "log"
 
 func launch() bool {
 	// Make sure a master running
@@ -103,6 +104,8 @@ func ensureMaster() *Node {
 		distributeKeys(masterNode, masterNode)
 	}
 
+	displayNodeInfo(masterNode)
+
 	return masterNode
 }
 
@@ -131,6 +134,19 @@ func launchNode(node *Node, masterNode *Node) {
 
 	// Finally, distribute the keys
 	distributeKeys(node, masterNode)
+
+	displayNodeInfo(node)
+}
+
+func displayNodeInfo(node *Node) {
+	// Get the uptime from the node for display purposes
+	uptime, err := node.SshRunOutput("uptime")
+	if err != nil {
+		log.Printf("Failed to get uptime for %s: %+v\n", node.Name, err)
+	}
+
+	// Display launch info
+	fmt.Printf("%s (%s): running %s", node.Name, node.Instance.IpAddress, uptime)
 }
 
 func waitForRunning(node *Node) error {
