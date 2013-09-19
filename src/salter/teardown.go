@@ -36,13 +36,13 @@ func teardown() {
 func teardownNode(node *Node) {
 	err := node.Update()
 	if err != nil {
-		fmt.Printf("Failed to teardown %s: %+v\n", node.Name, err)
+		fmt.Printf("%s: not terminated; %+v\n", node.Name, err)
 		return
 	}
 
 	err = node.Terminate()
 	if err != nil {
-		fmt.Printf("Failed to teardown %s: %+v\n", node.Name, err)
+		fmt.Printf("%s: not terminated; %+v\n", node.Name, err)
 		return
 	}
 
