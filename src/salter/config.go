@@ -9,6 +9,7 @@ import "github.com/BurntSushi/toml"
 import "github.com/dizzyd/goamz/aws"
 import "text/template"
 import "bytes"
+import "regexp"
 
 type Config struct {
 	Nodes        map[string]Node
@@ -43,6 +44,8 @@ type SGroupConfig struct {
 
 type SaltConfig struct {
 	RootDir string `toml:"root"`
+	Environment string
+	Timeout int
 }
 
 func NewConfig(filename string, targets []string, all bool) (config Config, err error) {
@@ -93,18 +96,22 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	// Load AWS auth info from environment
 	auth, err := aws.EnvAuth()
 	if err != nil {
-		fmt.Printf("Failed to load AWS auth from environment: %s\n", err)
+		err = fmt.Errorf("Failed to load AWS auth from environment: %s\n", err)
 		return
 	}
 
 	// If a user-data file is specified, use that to construct a template
 	userDataTemplate, err := template.ParseFiles("bootstrap/user.data")
 	if err != nil {
-		fmt.Printf("Failed to load user data template from %s: %+v\n",
+		err = fmt.Errorf("Failed to load user data template from %s: %+v\n",
 			config.UserDataFile, err)
 		return
 	}
 	config.UserDataTemplate = *userDataTemplate
+
+	if config.Salt.Timeout == 0 {
+		config.Salt.Timeout = 60
+	}
 
 
 	// Initialize our result
@@ -118,8 +125,13 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	switch {
 	case len(targets) > 0:
 		for _, t := range targets {
-			n, ok := config.Nodes[t]
-			if ok { config.Targets[t] = n }
+			selectNodes(t, config.Nodes, &(config.Targets))
+		}
+
+		// If no nodes were actually selected; warn and bail
+		if len(config.Targets) < 1 {
+			err = fmt.Errorf("No nodes matched the provided names!")
+			return
 		}
 	case all == true:
 		config.Targets = config.Nodes
@@ -131,6 +143,23 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	return
 }
 
+func selectNodes(target string, nodes map[string]Node, matched *map[string]Node) {
+	// Try to compile the target into a regex
+	regex, err := regexp.Compile(target)
+	if err != nil {
+		// Not a regex; warn and bail
+		fmt.Printf("%s is not a valid regex: %+v\n", target, err)
+		return
+	}
+
+	// Find all the node names that match our regex
+	for name, node := range nodes {
+		if regex.MatchString(name) {
+			(*matched)[name] = node
+		}
+	}
+}
+
 func (node *Node) applyAwsDefaults(aws AwsConfig) {
 	if node.Flavor    == "" { node.Flavor = aws.Flavor }
 	if node.Ami       == "" { node.Ami = aws.Ami }
@@ -139,12 +168,12 @@ func (node *Node) applyAwsDefaults(aws AwsConfig) {
 	if node.KeyName   == "" { node.KeyName = aws.KeyName }
 }
 
-
 type UserDataVars struct {
 	Hostname string
 	SaltMasterIP string
 	Roles []string
 	IsMaster bool
+	Environment string
 }
 
 func (config *Config) generateUserData(host string, roles []string, masterIp string) ([]byte, error) {
@@ -155,6 +184,7 @@ func (config *Config) generateUserData(host string, roles []string, masterIp str
 			SaltMasterIP: masterIp,
 			Roles: roles,
 			IsMaster: (masterIp == "127.0.0.1"),
+			Environment: config.Salt.Environment,
 		})
 	if err != nil {
 		fmt.Printf("Failed to generate user-data for %s: %+v\n", host, err)
