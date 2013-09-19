@@ -7,8 +7,8 @@ hostname `cat /etc/hostname`
 # Append loopback IP for hostname to /etc/hosts
 echo "{{printf "%s\t%s" "127.0.1.1" .Hostname}}" >> /etc/hosts
 
-# Append "salt" IP address to /etc/hosts
-echo "{{printf "%s\t%s" .SaltMasterIP "salt"}}" >> /etc/hosts
+# Append "saltmaster" IP address to /etc/hosts
+echo "{{printf "%s\t%s" .SaltMasterIP "saltmaster"}}" >> /etc/hosts
 
 # Write roles to /etc/salt/grains
 mkdir -p /etc/salt
@@ -20,7 +20,7 @@ environment: {{.Environment}}
 
 # Write configuration for Salt minion
 echo """
-master: salt
+master: saltmaster
 id: {{.Hostname}}
 
 mine_functions:

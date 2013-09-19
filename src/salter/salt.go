@@ -14,6 +14,12 @@ type HighstateEntry struct {
 
 
 func saltHighstate(master *Node, targets string) error {
+	if targets == "" {
+		fmt.Printf("No salt targets (-s) specified for highstate operation.\n")
+		return nil
+	}
+
+
 	cmd := fmt.Sprintf("sudo salt %s -t %d --output=json --static state.highstate",
 		targets,
 		G_CONFIG.Salt.Timeout)

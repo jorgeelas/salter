@@ -79,10 +79,6 @@ func ensureMaster() *Node {
 		return nil
 	}
 
-	// Track whether or not we are starting the master node for the first
-	// time
-	started := false
-
 	if !masterNode.IsRunning() {
 		// Not yet running, start it (designating master as localhost)
 		err := masterNode.Start("127.0.0.1")
@@ -90,7 +86,6 @@ func ensureMaster() *Node {
 			fmt.Printf("Unable to start node %s: %+v\n", masterNode.Name, err)
 			return nil
 		}
-		started = true
 	}
 
 	// Wait for master node be up and ready
@@ -100,9 +95,7 @@ func ensureMaster() *Node {
 	}
 
 	// Make sure the minion key on the master has been accepted
-	if started {
-		distributeKeys(masterNode, masterNode)
-	}
+	distributeKeys(masterNode, masterNode)
 
 	displayNodeInfo(masterNode)
 

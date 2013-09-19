@@ -84,17 +84,26 @@ func (node *Node) Start(masterIp string) error {
 			node.KeyName)
 	}
 
+	// Verify that the node's security group exists
+	if !RegionSGExists(node.SGroup, node.RegionId) {
+		return fmt.Errorf("security group %s is not available", node.SGroup)
+	}
+
 	// Generate the userdata script for this node
 	userData, err := G_CONFIG.generateUserData(node.Name, node.Roles, masterIp)
 	if err != nil {
 		return err
 	}
 
+	// We only permit a single security group right now per-node
+	sgroups := []ec2.SecurityGroup { RegionSG(node.SGroup, node.RegionId).SecurityGroup }
+
 	runInst := ec2.RunInstances {
 		ImageId: node.Ami,
 		KeyName: node.KeyName,
 		InstanceType: node.Flavor,
 		UserData: userData,
+		SecurityGroups: sgroups,
 		BlockDevices: deviceMappings(node.Flavor)}
 	runResp, err := node.Conn().RunInstances(&runInst)
 	if err != nil {

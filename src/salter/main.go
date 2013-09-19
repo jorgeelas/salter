@@ -44,6 +44,7 @@ func main() {
 	var targets Targets
 	var configFile string
 	var all bool
+	var saltTargets string
 
 	// Initialize data directory if it doesn't already exist
 	os.Mkdir(G_DIR, 0700)
@@ -64,6 +65,7 @@ func main() {
 	flag.StringVar(&configFile, "c", "salter.cfg", "Configuration file")
 	flag.BoolVar(&all, "a", false, "Apply operations to all nodes")
 	flag.Var(&targets, "n", "Target nodes for the operation (overrides -a flag)")
+	flag.StringVar(&saltTargets, "s", "", "Targets for salt-related operations")
 
 	// Parse it up
 	flag.Parse()
@@ -109,7 +111,7 @@ func main() {
 	case "upload":
 		upload()
 	case "highstate":
-		highstate()
+		highstate(saltTargets)
 	}
 }
 
@@ -214,14 +216,14 @@ func upload() {
 		return
 	}
 
-	// // Sync all nodes
+	// Sync all nodes
 	err = node.SshRun("sudo salt '*' --output=txt saltutil.sync_all")
 	if err != nil {
 		fmt.Printf("Failed to run saltutil.sync_all: %+v\n", err)
 		return
 	}
 
-	// // Update mine functions
+	// Update mine functions
 	err = node.SshRun("sudo salt '*' --output=txt mine.update")
 	if err != nil {
 		fmt.Printf("Failed to run mine.update: %+v\n", err)
@@ -230,7 +232,7 @@ func upload() {
 
 }
 
-func highstate() {
+func highstate(saltTargets string) {
 	// Find the master node
 	node := G_CONFIG.findNodeByRole("saltmaster")
 	if node == nil {
@@ -252,5 +254,39 @@ func highstate() {
 	}
 
 	// Run the high state
-	saltHighstate(node, "'*'")
+	saltHighstate(node, saltTargets)
+}
+
+// For each target node, ensure that the security group exists in the
+// appropriate region and that the rules in local definition are present.
+func sgroups() {
+	// Setup a cache to track security groups we need to work on
+	groups := make(map[string]RegionalSGroup)
+
+	// First, create any sgroups that need to exist
+	for _, node := range G_CONFIG.Targets {
+		sg, err := RegionSGEnsureExists(node.SGroup, node.RegionId)
+		if err != nil {
+			fmt.Printf("%s: Failed to create security group %s: %+v\n",
+				node.Name, node.SGroup, err)
+			return
+		}
+		groups[node.RegionId + "/" + node.SGroup] = *sg
+	}
+
+	// Now, for each of the groups, make sure any and all locally-defined
+	// rules are present
+	for _, sg := range groups {
+		// If the sg is not defined in our config, noop
+		_, found := G_CONFIG.SGroups[sg.Name]
+		if !found {
+			// Warn that this group was not found in local config
+			fmt.Printf("%s: Security group %s is not defined in local config file.\n", sg.RegionId, sg.Name)
+			continue
+		}
+
+		// 
+	}
+
+
 }

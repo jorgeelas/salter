@@ -21,7 +21,6 @@ type Config struct {
 	SGroups      map[string]SGroupConfig
 	AwsAuth      aws.Auth
 	DataDir      string
-	UserDataFile string
 
 	UserDataTemplate template.Template
 	MaxConcurrent    int
@@ -46,6 +45,7 @@ type SaltConfig struct {
 	RootDir string `toml:"root"`
 	Environment string
 	Timeout int
+	UserDataFile string `toml:"userdata"`
 }
 
 func NewConfig(filename string, targets []string, all bool) (config Config, err error) {
@@ -93,6 +93,16 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 		}
 	}
 
+	// Setup core salt config values
+	if config.Salt.Timeout == 0 {
+		config.Salt.Timeout = 60
+	}
+
+	if config.Salt.UserDataFile == "" {
+		config.Salt.UserDataFile = "bootstrap/user.data"
+	}
+
+
 	// Load AWS auth info from environment
 	auth, err := aws.EnvAuth()
 	if err != nil {
@@ -101,17 +111,13 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	}
 
 	// If a user-data file is specified, use that to construct a template
-	userDataTemplate, err := template.ParseFiles("bootstrap/user.data")
+	userDataTemplate, err := template.ParseFiles(config.Salt.UserDataFile)
 	if err != nil {
 		err = fmt.Errorf("Failed to load user data template from %s: %+v\n",
-			config.UserDataFile, err)
+			config.Salt.UserDataFile, err)
 		return
 	}
 	config.UserDataTemplate = *userDataTemplate
-
-	if config.Salt.Timeout == 0 {
-		config.Salt.Timeout = 60
-	}
 
 
 	// Initialize our result

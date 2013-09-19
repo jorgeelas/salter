@@ -10,9 +10,14 @@ type Region struct {
 	Keys      map[string]Key	  // Key name -> Key (key.go)
 	Conn      ec2.EC2
 
-	SGroups   map[string]ec2.SecurityGroupInfo // SG name -> Info
+	SGroups   map[string]RegionalSGroup // SG name -> Info
 
 	dataDir   string
+}
+
+type RegionalSGroup struct {
+	ec2.SecurityGroupInfo
+	RegionId string
 }
 
 func GetRegion(name string) (*Region, error) {
@@ -47,9 +52,25 @@ func RegionKey(name string, regionId string) Key {
 	return key
 }
 
+func RegionSGExists(name string, regionId string) bool {
+	region, _ := GetRegion(regionId)
+	_, found := region.SGroups[name]
+	return found
+}
+
+func RegionSG(name string, regionId string) RegionalSGroup {
+	region, _ := GetRegion(regionId)
+	sg := region.SGroups[name]
+	return sg
+}
+
+func RegionSGEnsureExists(name string, regionId string) (*RegionalSGroup, error) {
+	return nil, nil
+}
+
 func (r *Region) Refresh() error {
 	rKeys := make(map[string]Key)
-	rSgroups := make(map[string]ec2.SecurityGroupInfo)
+	rSgroups := make(map[string]RegionalSGroup)
 
 	var lastErr *error = nil
 
@@ -101,7 +122,11 @@ func (r *Region) Refresh() error {
 		}
 
 		for _, group := range sgroupResp.Groups {
-			rSgroups[group.Name] = group
+			// If the group is associated with a VPC we ignore it
+			if group.VpcId != "" {
+				continue
+			}
+			rSgroups[group.Name] = RegionalSGroup{ group, r.Conn.Region.Name }
 		}
 	}()
 
