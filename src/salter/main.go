@@ -27,6 +27,7 @@ func (t *Targets) Set(value string) error {
 var G_CONFIG  Config
 var G_REGIONS map[string]*Region
 var G_DIR     string
+var G_LOG     *os.File
 
 func usage() {
 	fmt.Println("usage: salter <options> <command>")
@@ -49,15 +50,15 @@ func main() {
 
 	// Setup logging subsystem
 	logFilename := path.Join(G_DIR, "log")
-	logFile, err := os.OpenFile(logFilename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	G_LOG, err := os.OpenFile(logFilename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		fmt.Printf("Could not open %s: %s\n", logFilename, err)
 		os.Exit(1)
 	}
-	defer logFile.Close()
+	defer G_LOG.Close()
 
 	// Direct all logging output to the log file
-	log.SetOutput(logFile)
+	log.SetOutput(G_LOG)
 
 	// Setup command line flags
 	flag.StringVar(&configFile, "c", "salter.cfg", "Configuration file")
@@ -107,6 +108,8 @@ func main() {
 		hosts()
 	case "upload":
 		upload()
+	case "highstate":
+		highstate()
 	}
 }
 
@@ -210,4 +213,44 @@ func upload() {
 		fmt.Printf("Rsync failed: %+v\n", err)
 		return
 	}
+
+	// // Sync all nodes
+	err = node.SshRun("sudo salt '*' --output=txt saltutil.sync_all")
+	if err != nil {
+		fmt.Printf("Failed to run saltutil.sync_all: %+v\n", err)
+		return
+	}
+
+	// // Update mine functions
+	err = node.SshRun("sudo salt '*' --output=txt mine.update")
+	if err != nil {
+		fmt.Printf("Failed to run mine.update: %+v\n", err)
+		return
+	}
+
+}
+
+func highstate() {
+	// Find the master node
+	node := G_CONFIG.findNodeByRole("saltmaster")
+	if node == nil {
+		fmt.Printf("Could not find a node with saltmaster role!\n")
+		return
+	}
+
+	// Get latest info from AWS
+	err := node.Update()
+	if err != nil {
+		fmt.Printf("Failed to update info for %s: %+v\n", node.Name, err)
+		return
+	}
+
+	// If the node isn't running, bail
+	if !node.IsRunning() {
+		fmt.Printf("%s is not running.\n", node.Name)
+		return
+	}
+
+	// Run the high state
+	saltHighstate(node, "'*'")
 }
