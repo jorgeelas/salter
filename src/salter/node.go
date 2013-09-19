@@ -75,7 +75,7 @@ func (node *Node) IsRunning() bool {
 func (node *Node) Start(masterIp string) error {
 	// If node is already running, noop
 	if node.IsRunning() {
-		return fmt.Errorf("already running")
+		return nil
 	}
 
 	// Verify that we have a key available to this node
@@ -94,7 +94,8 @@ func (node *Node) Start(masterIp string) error {
 		ImageId: node.Ami,
 		KeyName: node.KeyName,
 		InstanceType: node.Flavor,
-		UserData: userData }
+		UserData: userData,
+		BlockDevices: deviceMappings(node.Flavor)}
 	runResp, err := node.Conn().RunInstances(&runInst)
 	if err != nil {
 		return fmt.Errorf("launch failed: %+v\n", err)
@@ -102,7 +103,7 @@ func (node *Node) Start(masterIp string) error {
 
 	node.Instance = &(runResp.Instances[0])
 
-	fmt.Printf("Launching %s (%s)\n", node.Name, node.Instance.InstanceId)
+	fmt.Printf("%s (%s): started\n", node.Name, node.Instance.InstanceId)
 
 	// Instance is now running; apply any tags
 	_, err = node.Conn().CreateTags([]string { node.Instance.InstanceId }, node.ec2Tags())
@@ -123,7 +124,7 @@ func (node *Node) Terminate() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Terminated %s (%s)\n", node.Name, node.Instance.InstanceId)
+	fmt.Printf("%s (%s): terminated\n", node.Name, node.Instance.InstanceId)
 	node.Instance = nil
 	return nil
 }
@@ -171,10 +172,28 @@ func (node *Node) SshRun(cmd string) error {
 	}
 
 	defer session.Close()
-	output, err := session.Output(cmd)
-	log.Printf("%s: output for %s:\n%s\n", node.Name, cmd, output)
-	return err
+	log.Printf("%s: %s\n", node.Name, cmd)
+	return session.Run(cmd)
 }
+
+func (node *Node) SshRunOutput(cmd string) ([]byte, error) {
+	if node.SshClient == nil {
+		err := node.SshOpen()
+		if err != nil {
+			return nil,err
+		}
+	}
+
+	session, err := node.SshClient.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session - %+v", err)
+	}
+
+	defer session.Close()
+	log.Printf("%s: %s\n", node.Name, cmd)
+	return session.CombinedOutput(cmd)
+}
+
 
 func (node *Node) SshUpload(remoteFilename string, data []byte) error {
 	if node.SshClient == nil {
@@ -224,4 +243,51 @@ func (node *Node) GenSaltKey(bits int) ([]byte, []byte, error) {
 func PemEncode(data []byte, header string) []byte {
 	b := pem.Block{ Type: header, Bytes: data }
 	return pem.EncodeToMemory(&b)
+}
+
+func deviceMappings(flavor string) []ec2.BlockDeviceMapping {
+	switch flavor {
+	case "m1.large":
+		return deviceMappingGenerator(2)
+	case "m1.xlarge":
+		return deviceMappingGenerator(4)
+	case "c1.xlarge":
+		return deviceMappingGenerator(4)
+	case "m2.xlarge":
+		return deviceMappingGenerator(1)
+	case "m2.2xlarge":
+		return deviceMappingGenerator(1)
+	case "m2.4xlarge":
+		return deviceMappingGenerator(2)
+	case "hs1.8xlarge":
+		return deviceMappingGenerator(24)
+	case "hi1.4xlarge":
+		return deviceMappingGenerator(2)
+	case "cr1.8xlarge":
+		return deviceMappingGenerator(2)
+	case "cc2.8xlarge":
+		return deviceMappingGenerator(4)
+	case "cg1.4xlarge":
+		return deviceMappingGenerator(2)
+	default:
+		return []ec2.BlockDeviceMapping{}
+	}
+}
+
+func deviceMappingGenerator(count int) []ec2.BlockDeviceMapping {
+	if count < 0 {
+		count = 0
+	} else if count > 24 {
+		count = 24
+	}
+
+	mappings := make([]ec2.BlockDeviceMapping, 0)
+	for i := 0; i < count; i++ {
+		device := fmt.Sprintf("/dev/sd%c1", 'b' + i)
+		virtual := fmt.Sprintf("ephemeral%d", i)
+		mappings = append(mappings, ec2.BlockDeviceMapping{DeviceName: device,
+			VirtualName: virtual})
+	}
+
+	return mappings
 }
