@@ -24,6 +24,7 @@ package main
 import "fmt"
 import "log"
 import "encoding/json"
+import "sort"
 
 type HighstateHost map[string]HighstateEntry
 
@@ -41,7 +42,7 @@ func saltHighstate(master *Node, targets string) error {
 	}
 
 
-	cmd := fmt.Sprintf("sudo salt %s -t %d --output=json --static state.highstate",
+	cmd := fmt.Sprintf("sudo salt '%s' -t %d --output=json --static state.highstate",
 		targets,
 		G_CONFIG.Salt.Timeout)
 	out, err := master.SshRunOutput(cmd)
@@ -57,6 +58,8 @@ func saltHighstate(master *Node, targets string) error {
 		fmt.Printf("JSON parse error: %s\nRaw output: %s\n", err, out)
 		return err
 	}
+
+	report := make([]string, 0)
 
 	hosts := raw.(map[string]interface{})
 	for host, info := range hosts {
@@ -80,9 +83,19 @@ func saltHighstate(master *Node, targets string) error {
 				log.Printf("%s.%s: %s\n", host, id, entry.Comment)
 			}
 		}
-		fmt.Printf("%s: summary: %d errors, %d changes, %d states.\n", host, errors, changes, len(*entries))
 		log.Printf("%s: summary: %d errors, %d changes, %d states.\n", host, errors, changes, len(*entries))
+
+		// Add the line to the report we'll print
+		line := fmt.Sprintf("%20s:\t%d errors\t%d changes\t%d states.\n", host, errors, changes, len(*entries))
+		report = append(report, line)
 	}
+
+	// Sort the lines in the report and print
+	sort.Strings(report)
+	for _, l := range report {
+		fmt.Print(l)
+	}
+
 	return nil
 }
 
