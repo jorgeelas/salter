@@ -223,7 +223,7 @@ func upload() {
 		"-o UserKnownHostsFile=/dev/null", key.Filename)
 
 	// Run rsync
-	rsync := exec.Command("rsync", "-avz",
+	rsync := exec.Command("rsync", "-auvz", "--delete",
 		"--rsync-path=sudo rsync",
 		"-e", sshCmd,
 		G_CONFIG.Salt.RootDir + "/",
