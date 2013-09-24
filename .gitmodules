@@ -7,3 +7,6 @@
 [submodule "src/github.com/BurntSushi/ty"]
 	path = src/github.com/BurntSushi/ty
 	url = git://github.com/BurntSushi/ty
+[submodule "src/code.google.com/p/go.crypto"]
+	path = src/code.google.com/p/go.crypto
+	url = git://github.com/dizzyd/go.crypto
