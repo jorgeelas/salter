@@ -6,7 +6,6 @@ all:
 
 deps:
 	git submodule update --init
-	GOPATH=$(TOP) go get code.google.com/p/go.crypto
 
 clean:
 	@rm -rf pkg bin
