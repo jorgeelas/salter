@@ -86,7 +86,27 @@ func RegionSG(name string, regionId string) RegionalSGroup {
 }
 
 func RegionSGEnsureExists(name string, regionId string) (*RegionalSGroup, error) {
-	return nil, nil
+	region, _ := GetRegion(regionId)
+	var sg RegionalSGroup
+	sg, found := region.SGroups[name]
+	if !found {
+		// Create the SG
+		// TODO: Need to add support for VPC here?
+		sg.Name = name
+		sg.SecurityGroup.Description = name
+		sgResp, err := region.Conn.CreateSecurityGroup(sg.SecurityGroup)
+		if err != nil {
+			return nil, err
+		}
+
+		log.Printf("Created security group %s-%s\n", regionId, name)
+
+		sg.RegionId = regionId
+		sg.SecurityGroup = sgResp.SecurityGroup
+		region.SGroups[name] = sg
+		return &sg, nil
+	}
+	return &sg, nil
 }
 
 func (r *Region) Refresh() error {

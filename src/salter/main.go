@@ -122,9 +122,9 @@ func main() {
 
 	switch flag.Arg(0) {
 	case "launch":
-		launch()
+		launch()	// launch.go
 	case "teardown":
-		teardown()
+		teardown()	// teardown.go
 	case "ssh":
 		sshto()
 	case "hosts":
@@ -133,6 +133,8 @@ func main() {
 		upload()
 	case "highstate":
 		highstate(saltTargets)
+	case "sgroups":
+		sgroups()	// sgroups.go
 	}
 }
 
@@ -276,38 +278,4 @@ func highstate(saltTargets string) {
 
 	// Run the high state
 	saltHighstate(node, saltTargets)
-}
-
-// For each target node, ensure that the security group exists in the
-// appropriate region and that the rules in local definition are present.
-func sgroups() {
-	// Setup a cache to track security groups we need to work on
-	groups := make(map[string]RegionalSGroup)
-
-	// First, create any sgroups that need to exist
-	for _, node := range G_CONFIG.Targets {
-		sg, err := RegionSGEnsureExists(node.SGroup, node.RegionId)
-		if err != nil {
-			fmt.Printf("%s: Failed to create security group %s: %+v\n",
-				node.Name, node.SGroup, err)
-			return
-		}
-		groups[node.RegionId + "/" + node.SGroup] = *sg
-	}
-
-	// Now, for each of the groups, make sure any and all locally-defined
-	// rules are present
-	for _, sg := range groups {
-		// If the sg is not defined in our config, noop
-		_, found := G_CONFIG.SGroups[sg.Name]
-		if !found {
-			// Warn that this group was not found in local config
-			fmt.Printf("%s: Security group %s is not defined in local config file.\n", sg.RegionId, sg.Name)
-			continue
-		}
-
-		// 
-	}
-
-
 }
