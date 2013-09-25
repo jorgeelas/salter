@@ -295,7 +295,12 @@ func highstate() {
 }
 
 func dump() {
-	for id, node := range G_CONFIG.Targets {
-		fmt.Printf("%s: %+v\n", id, node)
+	// Get a list of all the keys and sort them
+	names := fun.Keys(G_CONFIG.Targets).([]string)
+	sort.Strings(names)
+
+	// Print each entry
+	for _, name := range names {
+		fmt.Printf("%s: %+v\n", name, G_CONFIG.Targets[name])
 	}
 }
