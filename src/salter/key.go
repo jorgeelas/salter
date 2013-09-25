@@ -34,6 +34,7 @@ import "crypto/md5"
 import "path/filepath"
 import "io"
 import "crypto"
+import "os"
 import "code.google.com/p/go.crypto/ssh"
 
 type Key struct {
@@ -69,6 +70,12 @@ func marshalToPKCS8(privKey *rsa.PrivateKey) []byte {
 func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
 	filename := filepath.Join(keyDir, keyName + ".pem")
 	if FileExists(filename) {
+		// Ensure the key file is not og accessible
+		info, _ := os.Stat(filename)
+		if info.Mode().Perm() != 0600 {
+			fmt.Printf("WARNING: incorrect perms on key %s - %s\n", filename, info.Mode().Perm())
+		}
+
 		// Read the whole PEM file
 		data, err := ioutil.ReadFile(filename)
 		if err != nil {
