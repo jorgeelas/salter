@@ -37,7 +37,7 @@ func sgroups() {
 	groups := make(map[string]*RegionalSGroup)
 
 	// First, create any sgroups that need to exist
-	for _, node := range G_CONFIG.Targets {
+	for _, node := range G_CONFIG.Nodes {
 		sg, err := RegionSGEnsureExists(node.SGroup, node.RegionId)
 		if err != nil {
 			fmt.Printf("%s: Failed to create security group %s: %+v\n",
