@@ -45,28 +45,48 @@ func (t *Targets) Set(value string) error {
 	return nil
 }
 
-var G_CONFIG  Config
-var G_REGIONS map[string]*Region
-var G_DIR     string
-var G_LOG     *os.File
+type Command struct {
+	Fn func()
+	Usage string
+}
+
+var G_CONFIG   Config
+var G_REGIONS  map[string]*Region
+var G_DIR      string
+var G_LOG      *os.File
+var G_COMMANDS map[string]Command
+
+var ARG_TARGETS Targets
+var ARG_CONFIG_FILE string
+var ARG_ALL bool
+var ARG_SALT_TARGETS string
+
 
 func usage() {
 	fmt.Println("usage: salter <options> <command>")
+	fmt.Printf(" options:\n")
 	flag.PrintDefaults()
-	os.Exit(-1)
+	fmt.Printf(" commands:\n")
+	for id, cmd := range G_COMMANDS {
+		fmt.Printf("  * %-12s %s\n", id, cmd.Usage)
+	}
 }
 
 func init() {
 	G_DIR = path.Join(os.ExpandEnv("$HOME"), ".salter")
 	G_REGIONS = make(map[string]*Region)
+	G_COMMANDS = make(map[string]Command)
+	G_COMMANDS["launch"] = Command{ Fn: launch, Usage: "launch instances on EC2"}
+	G_COMMANDS["teardown"] = Command{ Fn: teardown, Usage: "terminates instances on EC2"}
+	G_COMMANDS["ssh"] = Command{ Fn: sshto, Usage: "open a SSH session to a EC2 instance"}
+	G_COMMANDS["hosts"] = Command{ Fn: hosts, Usage: "generate a list of live nodes on EC2"}
+	G_COMMANDS["upload"] = Command{ Fn: upload, Usage: "upload Salt configuration to the Salt master"}
+	G_COMMANDS["highstate"] = Command{ Fn: highstate, Usage: "invoke Salt highstate on the Salt master"}
+	G_COMMANDS["sgroups"] = Command{ Fn: sgroups, Usage: "generate security groups from configuration"}
+	G_COMMANDS["help"] = Command{ Fn: usage, Usage: "display help"}
 }
 
 func main() {
-	var targets Targets
-	var configFile string
-	var all bool
-	var saltTargets string
-
 	// Initialize data directory if it doesn't already exist
 	os.Mkdir(G_DIR, 0700)
 
@@ -83,10 +103,10 @@ func main() {
 	log.SetOutput(G_LOG)
 
 	// Setup command line flags
-	flag.StringVar(&configFile, "c", "salter.cfg", "Configuration file")
-	flag.BoolVar(&all, "a", false, "Apply operations to all nodes")
-	flag.Var(&targets, "n", "Target nodes for the operation (overrides -a flag)")
-	flag.StringVar(&saltTargets, "s", "", "Targets for salt-related operations")
+	flag.StringVar(&ARG_CONFIG_FILE, "c", "salter.cfg", "Configuration file")
+	flag.BoolVar(&ARG_ALL, "a", false, "Apply operations to all nodes")
+	flag.Var(&ARG_TARGETS, "n", "Target nodes for the operation (overrides -a flag)")
+	flag.StringVar(&ARG_SALT_TARGETS, "s", "", "Targets for salt-related operations")
 
 	// Parse it up
 	flag.Parse()
@@ -94,17 +114,26 @@ func main() {
 	// If parse failed, bail
 	if !flag.Parsed() || flag.NArg() != 1 {
 		usage()
+		os.Exit(-1)
 	}
 
 	// Special cases for -a / -n
 	if flag.Arg(0) == "hosts" {
-		all = true
+		ARG_ALL = true
+	}
+
+	// Find the command the user is invoking
+	cmd, found := G_COMMANDS[flag.Arg(0)]
+	if !found {
+		fmt.Printf("ERROR: unknown command '%s'\n", flag.Arg(0))
+		usage()
+		os.Exit(-1)
 	}
 
 	// Initialize the config file
-	config, err := NewConfig(configFile, targets, all)
+	config, err := NewConfig(ARG_CONFIG_FILE, ARG_TARGETS, ARG_ALL)
 	if err != nil {
-		fmt.Printf("Failed to load config from %s: %+v\n", configFile, err)
+		fmt.Printf("Failed to load config from %s: %+v\n", ARG_CONFIG_FILE, err)
 		os.Exit(-1)
 	}
 
@@ -120,22 +149,7 @@ func main() {
 		}
 	}
 
-	switch flag.Arg(0) {
-	case "launch":
-		launch()	// launch.go
-	case "teardown":
-		teardown()	// teardown.go
-	case "ssh":
-		sshto()
-	case "hosts":
-		hosts()
-	case "upload":
-		upload()
-	case "highstate":
-		highstate(saltTargets)
-	case "sgroups":
-		sgroups()	// sgroups.go
-	}
+	cmd.Fn()
 }
 
 
@@ -255,7 +269,7 @@ func upload() {
 
 }
 
-func highstate(saltTargets string) {
+func highstate() {
 	// Find the master node
 	node := G_CONFIG.findNodeByRole("saltmaster")
 	if node == nil {
@@ -277,5 +291,5 @@ func highstate(saltTargets string) {
 	}
 
 	// Run the high state
-	saltHighstate(node, saltTargets)
+	saltHighstate(node, ARG_SALT_TARGETS)
 }

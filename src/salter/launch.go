@@ -26,11 +26,11 @@ import "time"
 import "code.google.com/p/go.crypto/ssh"
 import "log"
 
-func launch() bool {
+func launch() {
 	// Make sure a master running
 	masterNode := ensureMaster()
 	if masterNode == nil {
-		return false
+		return
 	}
 
 	// Remove the master node from targets; we're assured it's already
@@ -43,7 +43,7 @@ func launch() bool {
 	if err != nil {
 		fmt.Printf("Unable to open SSH connection to master: %+v\n",
 			err)
-		return false
+		return
 	}
 
 	// Setup a channel for queuing up nodes to launch and another
@@ -75,8 +75,6 @@ func launch() bool {
 	for i := 0; i < G_CONFIG.MaxConcurrent; i++ {
 		<- shutdownQueue
 	}
-
-	return true
 }
 
 func ensureMaster() *Node {
