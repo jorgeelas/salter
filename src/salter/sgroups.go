@@ -139,24 +139,44 @@ func parseSGRule(rule string, region string) (*ec2.IPPerm, error) {
 
 
 func (perms PermArray) contains(perm ec2.IPPerm) bool {
-	for _, p := range perms {
-		fmt.Printf("I: %+v\nP: %+v\n", p, perm)
-		if p.Protocol == perm.Protocol &&
-			p.FromPort == perm.FromPort &&
-			p.ToPort == perm.ToPort &&
-			len(p.SourceIPs) == len(perm.SourceIPs) &&
-			len(p.SourceGroups) == len(perm.SourceGroups) {
-			for i := range p.SourceIPs {
-				if p.SourceIPs[i] != perm.SourceIPs[i] {
-					return false
+	compareString := func(s1, s2 []string) bool {
+		for _, d2 := range s2 {
+			found := false
+			for _, d1 := range s1 {
+				if d2 == d1 {
+					found = true
+					break
 				}
 			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	}
 
-			for i := range p.SourceGroups {
-				if p.SourceGroups[i] != perm.SourceGroups[i] {
-					return false
+	compareSG := func(s1, s2 []ec2.UserSecurityGroup) bool {
+		for _, d2 := range s2 {
+			found := false
+			for _, d1 := range s1 {
+				if d2 == d1 {
+					found = true
+					break
 				}
 			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	}
+
+	for _, p := range perms {
+		if p.Protocol == perm.Protocol &&
+		p.FromPort == perm.FromPort &&
+		p.ToPort == perm.ToPort &&
+		compareString(p.SourceIPs, perm.SourceIPs) &&
+		compareSG(p.SourceGroups, perm.SourceGroups) {
 			return true
 		}
 	}
