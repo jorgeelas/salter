@@ -184,6 +184,7 @@ func waitForRunning(node *Node) error {
 }
 
 func waitForSsh(node *Node) error {
+	counter := 10
 	for {
 		err := node.SshOpen()
 		if err == nil {
@@ -191,7 +192,14 @@ func waitForSsh(node *Node) error {
 			return waitForCloudInit(node)
 		}
 
-		// Wait for 7 seconds
+		counter--
+
+		if counter < 0 {
+			return fmt.Errorf("wait for SSH timed out: %s",
+				err)
+		}
+
+		// Wait for 5 seconds
 		time.Sleep(5 * time.Second)
 	}
 }
