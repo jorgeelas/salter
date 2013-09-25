@@ -75,6 +75,9 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 		return
 	}
 
+	// Inherited fields for a node
+	inheritedFields := []string {"Username", "Flavor", "RegionId", "Ami", "SGroup", "KeyName"}
+
 	// Expand the list of nodes so that we have an entry per individual node
 	resolvedNodes := make(map[string]Node)
 	for id, node := range config.Nodes {
@@ -91,14 +94,18 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 				// Get the config specific to this key, or fallback
 				// to template base
 				n, exists := config.Nodes[key]
-				if !exists { n = node }
+				if exists {
+					inheritFieldsIfEmpty(&n, node, inheritedFields)
+				} else {
+					n = node
+				}
 
 				// Get the tags specific to this generated node,
 				// or fallback to generic identifier
 				tags, exists := config.Tags[key]
 				if !exists { tags = config.Tags[id] }
 
-				n.applyAwsDefaults(config.Aws)
+				inheritFieldsIfEmpty(&n, config.Aws, inheritedFields)
 				n.Name = key
 				n.Count = 0
 				n.Tags = tags
@@ -107,7 +114,7 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 				resolvedNodes[key] = n
 			}
 		} else {
-			node.applyAwsDefaults(config.Aws)
+			inheritFieldsIfEmpty(&node, config.Aws, inheritedFields)
 			node.Config = &config
 			node.Tags = config.Tags[id]
 			resolvedNodes[id] = node
@@ -185,14 +192,6 @@ func selectNodes(target string, nodes map[string]Node, matched *map[string]Node)
 			(*matched)[name] = node
 		}
 	}
-}
-
-func (node *Node) applyAwsDefaults(aws AwsConfig) {
-	if node.Flavor    == "" { node.Flavor = aws.Flavor }
-	if node.Ami       == "" { node.Ami = aws.Ami }
-	if node.RegionId  == "" { node.RegionId = aws.RegionId }
-	if node.SGroup    == "" { node.SGroup = aws.SGroup }
-	if node.KeyName   == "" { node.KeyName = aws.KeyName }
 }
 
 type UserDataVars struct {

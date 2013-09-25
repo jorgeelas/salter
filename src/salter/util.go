@@ -23,6 +23,7 @@ package main
 
 import "os"
 import "reflect"
+import "fmt"
 
 func FileExists(filename string) bool {
 	_, err := os.Stat(filename)
@@ -82,4 +83,73 @@ func pForEachValue(m interface{}, f interface{}, concurrent int) {
 	}
 
 	close(doneQueue)
+}
+
+
+func inheritFieldsIfEmpty(to interface{}, from interface{}, fieldNames []string) {
+	toVal := reflect.Indirect(reflect.ValueOf(to))
+	fromVal := reflect.ValueOf(from)
+
+	for _, field := range fieldNames {
+		toField := toVal.FieldByName(field)
+		if isEmpty(toField) {
+			fromField := fromVal.FieldByName(field)
+			toField.Set(fromField)
+		}
+	}
+}
+
+func isEmpty(v reflect.Value) bool {
+	if !v.IsValid() {
+		return false
+	}
+
+	switch v.Kind() {
+        case reflect.Int:
+		return v.Int() == 0
+        case reflect.Int8:
+		return v.Int() == 0
+        case reflect.Int16:
+		return v.Int() == 0
+        case reflect.Int32:
+		return v.Int() == 0
+        case reflect.Int64:
+		return v.Int() == 0
+        case reflect.Uint:
+		return v.Uint() == 0
+        case reflect.Uint8:
+		return v.Uint() == 0
+        case reflect.Uint16:
+		return v.Uint() == 0
+        case reflect.Uint32:
+		return v.Uint() == 0
+        case reflect.Uint64:
+		return v.Uint() == 0
+        case reflect.Float32:
+		return v.Int() == 0.0
+        case reflect.Float64:
+		return v.Int() == 0.0
+        case reflect.Complex64:
+		return v.Int() == 0.0
+        case reflect.Complex128:
+		return v.Int() == 0.0
+        case reflect.Array:
+		return v.IsNil()
+        case reflect.Chan:
+		return v.IsNil()
+        case reflect.Func:
+		return v.IsNil()
+        case reflect.Interface:
+		return v.IsNil()
+        case reflect.Map:
+		return v.IsNil()
+        case reflect.Ptr:
+		return v.IsNil()
+        case reflect.Slice:
+		return v.IsNil()
+        case reflect.String:
+		return v.Len() == 0
+	default:
+		panic(fmt.Sprintf("IsEmpty() unexpected value kind: %+v\n", v))
+	}
 }

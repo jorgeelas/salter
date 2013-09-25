@@ -84,6 +84,7 @@ func init() {
 	G_COMMANDS["highstate"] = Command{ Fn: highstate, Usage: "invoke Salt highstate on the Salt master"}
 	G_COMMANDS["sgroups"] = Command{ Fn: sgroups, Usage: "generate security groups from configuration"}
 	G_COMMANDS["help"] = Command{ Fn: usage, Usage: "display help"}
+	G_COMMANDS["dump"] = Command{ Fn: dump, Usage: "dump generated node definitions"}
 }
 
 func main() {
@@ -151,7 +152,6 @@ func main() {
 
 	cmd.Fn()
 }
-
 
 func sshto() {
 	target := fun.Keys(G_CONFIG.Targets).([]string)
@@ -292,4 +292,10 @@ func highstate() {
 
 	// Run the high state
 	saltHighstate(node, ARG_SALT_TARGETS)
+}
+
+func dump() {
+	for id, node := range G_CONFIG.Targets {
+		fmt.Printf("%s: %+v\n", id, node)
+	}
 }
