@@ -93,7 +93,7 @@ func main() {
 
 	// Setup logging subsystem
 	logFilename := path.Join(G_DIR, "log")
-	G_LOG, err := os.OpenFile(logFilename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	G_LOG, err := os.OpenFile(logFilename, os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Printf("Could not open %s: %s\n", logFilename, err)
 		os.Exit(1)
@@ -102,6 +102,11 @@ func main() {
 
 	// Direct all logging output to the log file
 	log.SetOutput(G_LOG)
+
+	// Log run info
+	log.Printf("--- %s ---\n", os.Args)
+	cwd, _ := os.Getwd()
+	log.Printf("Cwd: %s\n", cwd)
 
 	// Setup command line flags
 	flag.StringVar(&ARG_CONFIG_FILE, "c", "salter.cfg", "Configuration file")

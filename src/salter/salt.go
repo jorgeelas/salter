@@ -78,9 +78,11 @@ func saltHighstate(master *Node, targets string) error {
 		for id, entry := range *entries {
 			entryChanges := len(entry.Changes)
 			changes += entryChanges
-			if !entry.Result { errors += 1}
-			if entryChanges > 0 || !entry.Result {
-				log.Printf("%s.%s: %s\n", host, id, entry.Comment)
+			if !entry.Result {
+				errors += 1
+				log.Printf("ERR %s.%s: %s\n", host, id, entry.Comment)
+			} else if entryChanges > 0 {
+				log.Printf("CHG %s.%s: %s\n", host, id, entry.Comment)
 			}
 		}
 		log.Printf("%s: summary: %d errors, %d changes, %d states.\n", host, errors, changes, len(*entries))
