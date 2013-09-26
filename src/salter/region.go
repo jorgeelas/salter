@@ -169,6 +169,12 @@ func (r *Region) Refresh() error {
 			}
 			rSgroups[group.Name] = RegionalSGroup{ group, r.Conn.Region.Name }
 		}
+
+		// Insert amazon-elb as a valid group
+		amazonElbSg := RegionalSGroup{ RegionId: r.Conn.Region.Name }
+		amazonElbSg.Name = "amazon-elb-sg"
+		amazonElbSg.OwnerId = "amazon-elb"
+		rSgroups["amazon-elb-sg"] = amazonElbSg
 	}()
 
 	wg.Wait()
