@@ -259,6 +259,7 @@ func upload() {
 	}
 
 	// Sync all nodes
+	fmt.Printf("Running saltutil.sync_all...\n")
 	err = node.SshRun("sudo salt '*' --output=txt saltutil.sync_all")
 	if err != nil {
 		fmt.Printf("Failed to run saltutil.sync_all: %+v\n", err)
@@ -266,12 +267,20 @@ func upload() {
 	}
 
 	// Update mine functions
+	fmt.Printf("Running mine.update...\n")
 	err = node.SshRun("sudo salt '*' --output=txt mine.update")
 	if err != nil {
 		fmt.Printf("Failed to run mine.update: %+v\n", err)
 		return
 	}
 
+	// Ensure that all pillars are up to date
+	fmt.Printf("Running saltutil.refresh_pillar...\n")
+	err = node.SshRun("sudo salt '*' --output=txt saltutil.refresh_pillar")
+	if err != nil {
+		fmt.Printf("Failed to run saltutil.refresh_pillar: %+v\n", err)
+		return
+	}
 }
 
 func highstate() {
