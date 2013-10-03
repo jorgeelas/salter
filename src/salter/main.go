@@ -93,7 +93,7 @@ func main() {
 
 	// Setup logging subsystem
 	logFilename := path.Join(G_DIR, "log")
-	G_LOG, err := os.OpenFile(logFilename, os.O_RDWR|os.O_APPEND, 0666)
+	G_LOG, err := os.OpenFile(logFilename, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
 	if err != nil {
 		fmt.Printf("Could not open %s: %s\n", logFilename, err)
 		os.Exit(1)
