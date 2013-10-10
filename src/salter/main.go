@@ -67,8 +67,12 @@ func usage() {
 	fmt.Printf(" options:\n")
 	flag.PrintDefaults()
 	fmt.Printf(" commands:\n")
-	for id, cmd := range G_COMMANDS {
-		fmt.Printf("  * %-12s %s\n", id, cmd.Usage)
+
+	cmds := fun.Keys(G_COMMANDS).([]string)
+	sort.Strings(cmds)
+
+	for _, cmd := range cmds {
+		fmt.Printf("  * %-12s %s\n", cmd, G_COMMANDS[cmd].Usage)
 	}
 }
 
