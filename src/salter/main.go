@@ -79,6 +79,7 @@ func init() {
 	G_COMMANDS["launch"] = Command{ Fn: launch, Usage: "launch instances on EC2"}
 	G_COMMANDS["teardown"] = Command{ Fn: teardown, Usage: "terminates instances on EC2"}
 	G_COMMANDS["ssh"] = Command{ Fn: sshto, Usage: "open a SSH session to a EC2 instance"}
+	G_COMMANDS["csshx"] = Command { Fn: csshx, Usage: "open a series of SSH sessions to EC2 instances via csshX" }
 	G_COMMANDS["hosts"] = Command{ Fn: hosts, Usage: "generate a list of live nodes on EC2"}
 	G_COMMANDS["upload"] = Command{ Fn: upload, Usage: "upload Salt configuration to the Salt master"}
 	G_COMMANDS["highstate"] = Command{ Fn: highstate, Usage: "invoke Salt highstate on the Salt master"}
@@ -196,6 +197,65 @@ func sshto() {
 	fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
 	syscall.Exec("/usr/bin/ssh", args, env)
 }
+
+func csshx() {
+	// Make sure we can find an instance of csshX on the path
+	csshPath, err := exec.LookPath("csshX")
+	if err != nil {
+		fmt.Printf("Unable to find csshX on your path.\n")
+		return
+	}
+
+	// Get a list of all the keys and sort them
+	names := fun.Keys(G_CONFIG.Targets).([]string)
+	sort.Strings(names)
+	if len(names) < 1 {
+		fmt.Printf("You must specify one or more targets!\n")
+		return
+	}
+
+	// Update all the targets with latest instance info
+	pForEachValue(G_CONFIG.Targets, (*Node).Update, 10)
+
+	// If any of the nodes are not running, bail with error
+	allRunning := true
+	for _, node := range G_CONFIG.Targets {
+		if !node.IsRunning() {
+			allRunning = false
+			fmt.Printf("%s is not running\n", node.Name)
+		}
+	}
+
+	if !allRunning {
+		fmt.Printf("Some target nodes are not running on AWS; aborting.\n")
+		return
+	}
+
+	key := RegionKey(G_CONFIG.Targets[names[0]].KeyName, G_CONFIG.Targets[names[0]].RegionId)
+
+	sshArgs := fmt.Sprintf("-i %s -o LogLevel=FATAL -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardAgent=yes",
+		key.Filename)
+
+	args := []string {
+		csshPath, "--ssh_args", sshArgs,
+		"-l", G_CONFIG.Aws.Username,
+	}
+
+	fmt.Printf("Connecting to:\n")
+
+	for _, name := range names {
+		fmt.Printf(" * %s\n", name)
+		args = append(args, G_CONFIG.Targets[name].Instance.IpAddress)
+	}
+
+	env := []string {
+		"HOME=" + os.Getenv("HOME"),
+		"TERM=" + os.Getenv("TERM"),
+	}
+
+	syscall.Exec("/usr/local/bin/csshX", args, env)
+}
+
 
 
 func hosts() {
