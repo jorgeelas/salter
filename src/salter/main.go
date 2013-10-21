@@ -304,15 +304,17 @@ func upload() {
 	key := RegionKey(node.KeyName, node.RegionId)
 
 	// Generate SSH sub-command
-	sshCmd := fmt.Sprintf("ssh -i %s -o LogLevel=FATAL -o StrictHostKeyChecking=no "+
-		"-o UserKnownHostsFile=/dev/null", key.Filename)
+	sshCmd := fmt.Sprintf("ssh -l %s -i %s -o LogLevel=FATAL " +
+		"-o StrictHostKeyChecking=no "+
+		"-o UserKnownHostsFile=/dev/null", G_CONFIG.Aws.Username, key.Filename)
 
 	// Run rsync
-	rsync := exec.Command("rsync", "-auvz", "--delete",
+	rsync := exec.Command("rsync", "-rlptDuvz", "--delete",
 		"--rsync-path=sudo rsync",
 		"-e", sshCmd,
 		G_CONFIG.Salt.RootDir + "/",
 		fmt.Sprintf("%s@%s:/srv/salt", G_CONFIG.Aws.Username, node.Instance.DNSName))
+	fmt.Printf("Rsync: %+v\n", rsync)
 	rsync.Stdout = os.Stdout
 	rsync.Stderr = os.Stdout
 	fmt.Printf("Uploading %s to %s:/srv/salt...\n", G_CONFIG.Salt.RootDir, node.Instance.IpAddress)
