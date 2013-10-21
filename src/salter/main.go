@@ -314,7 +314,6 @@ func upload() {
 		"-e", sshCmd,
 		G_CONFIG.Salt.RootDir + "/",
 		fmt.Sprintf("%s@%s:/srv/salt", G_CONFIG.Aws.Username, node.Instance.DNSName))
-	fmt.Printf("Rsync: %+v\n", rsync)
 	rsync.Stdout = os.Stdout
 	rsync.Stderr = os.Stdout
 	fmt.Printf("Uploading %s to %s:/srv/salt...\n", G_CONFIG.Salt.RootDir, node.Instance.IpAddress)
