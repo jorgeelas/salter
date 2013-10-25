@@ -186,19 +186,23 @@ func sshto() {
 	key := RegionKey(node.KeyName, node.RegionId)
 
 	args := []string {
-		"ssh", "-i", key.Filename,
+		"ssh",
+		"-i", key.Filename,
 		"-o", "LogLevel=FATAL",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "ForwardAgent=yes",
 		"-l", G_CONFIG.Aws.Username,
-		node.Instance.DNSName }
+		node.Instance.DNSName,
+    }
 
 	env := []string {
 		"TERM=" + os.Getenv("TERM"),
 	}
 
+
 	fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
+	closeFrom(3)
 	syscall.Exec("/usr/bin/ssh", args, env)
 }
 
