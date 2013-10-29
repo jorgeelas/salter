@@ -121,7 +121,7 @@ func main() {
 	flag.StringVar(&ARG_CONFIG_FILE, "c", "salter.cfg", "Configuration file")
 	flag.BoolVar(&ARG_ALL, "a", false, "Apply operations to all nodes")
 	flag.Var(&ARG_TARGETS, "n", "Target nodes for the operation (overrides -a flag)")
-	flag.StringVar(&ARG_SALT_TARGETS, "s", "", "Targets for salt-related operations")
+	flag.StringVar(&ARG_SALT_TARGETS, "s", "'*'", "Targets for salt-related operations")
 
 	// Parse it up
 	flag.Parse()
