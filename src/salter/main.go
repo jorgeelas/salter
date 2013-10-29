@@ -46,7 +46,7 @@ func (t *Targets) Set(value string) error {
 }
 
 type Command struct {
-	Fn func()
+	Fn func() error
 	Usage string
 }
 
@@ -62,7 +62,7 @@ var ARG_ALL bool
 var ARG_SALT_TARGETS string
 
 
-func usage() {
+func usage() error {
 	fmt.Println("usage: salter <options> <command>")
 	fmt.Printf(" options:\n")
 	flag.PrintDefaults()
@@ -74,6 +74,8 @@ func usage() {
 	for _, cmd := range cmds {
 		fmt.Printf("  * %-12s %s\n", cmd, G_COMMANDS[cmd].Usage)
 	}
+
+	return nil
 }
 
 func init() {
@@ -90,6 +92,8 @@ func init() {
 	G_COMMANDS["sgroups"] = Command{ Fn: sgroups, Usage: "generate security groups from configuration"}
 	G_COMMANDS["help"] = Command{ Fn: usage, Usage: "display help"}
 	G_COMMANDS["dump"] = Command{ Fn: dump, Usage: "dump generated node definitions"}
+	G_COMMANDS["bootstrap"] = Command{ Fn: bootstrap,
+		Usage: "Upload Salt configuration and highstate master."}
 }
 
 func main() {
@@ -163,11 +167,11 @@ func main() {
 	cmd.Fn()
 }
 
-func sshto() {
+func sshto() error {
 	target := fun.Keys(G_CONFIG.Targets).([]string)
 	if len(target) != 1 {
 		fmt.Printf("Only one node may be used with the ssh command.\n")
-		return
+		return fmt.Errorf("More than one target")
 	}
 
 	node := G_CONFIG.Targets[target[0]]
@@ -175,12 +179,12 @@ func sshto() {
 	if err != nil {
 		fmt.Printf("Unable to retrieve status of %s from AWS: %+v\n",
 			node.Name, err)
-		return
+		return err
 	}
 
 	if !node.IsRunning() {
 		fmt.Printf("Node %s is not running.\n", node.Name)
-		return
+		return fmt.Errorf("%s is not running", node.Name)
 	}
 
 	key := RegionKey(node.KeyName, node.RegionId)
@@ -204,14 +208,15 @@ func sshto() {
 	fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
 	closeFrom(3)
 	syscall.Exec("/usr/bin/ssh", args, env)
+	return nil
 }
 
-func csshx() {
+func csshx() error {
 	// Make sure we can find an instance of csshX on the path
 	csshPath, err := exec.LookPath("csshX")
 	if err != nil {
 		fmt.Printf("Unable to find csshX on your path.\n")
-		return
+		return err
 	}
 
 	// Get a list of all the keys and sort them
@@ -219,7 +224,7 @@ func csshx() {
 	sort.Strings(names)
 	if len(names) < 1 {
 		fmt.Printf("You must specify one or more targets!\n")
-		return
+		return fmt.Errorf("At least one target must be specified")
 	}
 
 	// Update all the targets with latest instance info
@@ -236,7 +241,7 @@ func csshx() {
 
 	if !allRunning {
 		fmt.Printf("Some target nodes are not running on AWS; aborting.\n")
-		return
+		return fmt.Errorf("Some target nodes are not running")
 	}
 
 	key := RegionKey(G_CONFIG.Targets[names[0]].KeyName, G_CONFIG.Targets[names[0]].RegionId)
@@ -262,11 +267,12 @@ func csshx() {
 	}
 
 	syscall.Exec("/usr/local/bin/csshX", args, env)
+	return nil
 }
 
 
 
-func hosts() {
+func hosts() error {
 	// Update all the targets with latest instance info
 	pForEachValue(G_CONFIG.Targets, (*Node).Update, 10)
 
@@ -281,27 +287,29 @@ func hosts() {
 			fmt.Printf("%s\t%s\n", node.Instance.IpAddress, node.Name)
 		}
 	}
+
+	return nil
 }
 
-func upload() {
+func upload() error {
 	// Find the master node
 	node := G_CONFIG.findNodeByRole("saltmaster")
 	if node == nil {
 		fmt.Printf("Could not find a node with saltmaster role!\n")
-		return
+		return fmt.Errorf("no saltmaster role")
 	}
 
 	// Get latest info from AWS
 	err := node.Update()
 	if err != nil {
 		fmt.Printf("Failed to update info for %s: %+v\n", node.Name, err)
-		return
+		return err
 	}
 
 	// If the node isn't running, bail
 	if !node.IsRunning() {
 		fmt.Printf("%s is not running.\n", node.Name)
-		return
+		return fmt.Errorf("master isn't running")
 	}
 
 	// Lookup key for the node/region
@@ -324,7 +332,7 @@ func upload() {
 	err = rsync.Run()
 	if err != nil {
 		fmt.Printf("Rsync failed: %+v\n", err)
-		return
+		return err
 	}
 
 	// Sync all nodes
@@ -332,7 +340,7 @@ func upload() {
 	err = node.SshRun("sudo salt '*' --output=txt saltutil.sync_all")
 	if err != nil {
 		fmt.Printf("Failed to run saltutil.sync_all: %+v\n", err)
-		return
+		return err
 	}
 
 	// Update mine functions
@@ -340,7 +348,7 @@ func upload() {
 	err = node.SshRun("sudo salt '*' --output=txt mine.update")
 	if err != nil {
 		fmt.Printf("Failed to run mine.update: %+v\n", err)
-		return
+		return err
 	}
 
 	// Ensure that all pillars are up to date
@@ -348,36 +356,38 @@ func upload() {
 	err = node.SshRun("sudo salt '*' --output=txt saltutil.refresh_pillar")
 	if err != nil {
 		fmt.Printf("Failed to run saltutil.refresh_pillar: %+v\n", err)
-		return
+		return err
 	}
+
+	return nil
 }
 
-func highstate() {
+func highstate() error {
 	// Find the master node
 	node := G_CONFIG.findNodeByRole("saltmaster")
 	if node == nil {
 		fmt.Printf("Could not find a node with saltmaster role!\n")
-		return
+		return fmt.Errorf("no master")
 	}
 
 	// Get latest info from AWS
 	err := node.Update()
 	if err != nil {
 		fmt.Printf("Failed to update info for %s: %+v\n", node.Name, err)
-		return
+		return err
 	}
 
 	// If the node isn't running, bail
 	if !node.IsRunning() {
 		fmt.Printf("%s is not running.\n", node.Name)
-		return
+		return fmt.Errorf("%s is not running", node.Name)
 	}
 
 	// Run the high state
-	saltHighstate(node, ARG_SALT_TARGETS)
+	return saltHighstate(node, ARG_SALT_TARGETS)
 }
 
-func dump() {
+func dump() error {
 	// Get a list of all the keys and sort them
 	names := fun.Keys(G_CONFIG.Targets).([]string)
 	sort.Strings(names)
@@ -386,4 +396,22 @@ func dump() {
 	for _, name := range names {
 		fmt.Printf("%s: %+v\n", name, G_CONFIG.Targets[name])
 	}
+
+	return nil
+}
+
+func bootstrap() error {
+	// Upload data to master
+	err := upload()
+	if err != nil {
+		return err
+	}
+
+	// Find the master node
+	node := G_CONFIG.findNodeByRole("saltmaster")
+
+	// Highstate just the master
+	fmt.Printf("Highstating %s...\n", node.Name)
+	ARG_SALT_TARGETS = node.Name
+	return highstate()
 }

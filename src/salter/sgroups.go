@@ -32,7 +32,7 @@ type PermArray []ec2.IPPerm
 
 // For each target node, ensure that the security group exists in the
 // appropriate region and that the rules in local definition are present.
-func sgroups() {
+func sgroups() error {
 	// Setup a cache to track security groups we need to work on
 	groups := make(map[string]*RegionalSGroup)
 
@@ -42,7 +42,7 @@ func sgroups() {
 		if err != nil {
 			fmt.Printf("%s: Failed to create security group %s: %+v\n",
 				node.Name, node.SGroup, err)
-			return
+			return err
 		}
 		groups[node.RegionId + "/" + node.SGroup] = sg
 	}
@@ -66,7 +66,7 @@ func sgroups() {
 			perm, err := parseSGRule(rule, sg.RegionId)
 			if err != nil {
 				fmt.Printf("Invalid rule; %s\n", err)
-				return
+				return err
 			}
 
 			perms := PermArray(sg.IPPerms)
@@ -87,10 +87,12 @@ func sgroups() {
 			if err != nil {
 				fmt.Printf("Unable to add missing groups to %s: %+v\n%+v\n",
 					sg.Name, err, missingPerms)
-				return
+				return err
 			}
 		}
 	}
+
+	return nil
 }
 
 

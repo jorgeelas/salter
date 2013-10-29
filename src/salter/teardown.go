@@ -23,7 +23,7 @@ package main
 
 import "fmt"
 
-func teardown() {
+func teardown() error {
 	// Setup a channel for queuing requests for teardown and another
 	// for shutdown notification
 	teardownQueue := make(chan Node)
@@ -52,6 +52,8 @@ func teardown() {
 	for i := 0; i < G_CONFIG.MaxConcurrent; i++ {
 		<- shutdownQueue
 	}
+
+	return nil
 }
 
 func teardownNode(node *Node) {
