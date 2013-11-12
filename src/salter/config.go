@@ -53,6 +53,7 @@ type AwsConfig struct {
 	Username string `toml:"ssh_username"`
 	Flavor   string
 	RegionId string `toml:"region"`
+	Zone     string `toml:"zone"`
 	Ami      string
 	SGroup   string
 	KeyName  string

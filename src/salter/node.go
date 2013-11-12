@@ -38,7 +38,7 @@ type Node struct {
 	Count     int
 	Flavor    string
 	RegionId  string `toml:"region"`
-	Zone      string
+	Zone      string `toml:"zone"`
 	Ami       string
 	SGroup    string
 	KeyName   string
@@ -125,6 +125,7 @@ func (node *Node) Start(masterIp string) error {
 		InstanceType: node.Flavor,
 		UserData: userData,
 		SecurityGroups: sgroups,
+		AvailZone: node.Zone,
 		BlockDevices: deviceMappings(node.Flavor)}
 	runResp, err := node.Conn().RunInstances(&runInst)
 	if err != nil {
