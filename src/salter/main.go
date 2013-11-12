@@ -94,6 +94,7 @@ func init() {
 	G_COMMANDS["dump"] = Command{ Fn: dump, Usage: "dump generated node definitions"}
 	G_COMMANDS["bootstrap"] = Command{ Fn: bootstrap,
 		Usage: "Upload Salt configuration and highstate master."}
+	G_COMMANDS["info"] = Command{ Fn: info, Usage:"display internal/external IP addresses for nodes"}
 }
 
 func main() {
@@ -285,6 +286,27 @@ func hosts() error {
 		node := G_CONFIG.Targets[name]
 		if node.Instance != nil {
 			fmt.Printf("%s\t%s\n", node.Instance.IpAddress, node.Name)
+		}
+	}
+
+	return nil
+}
+
+func info() error {
+	// Update all the targets with latest instance info
+	pForEachValue(G_CONFIG.Targets, (*Node).Update, 10)
+
+	// Get a list of all the keys and sort them
+	names := fun.Keys(G_CONFIG.Targets).([]string)
+	sort.Strings(names)
+
+	// Print each entry
+	for _, name := range names {
+		node := G_CONFIG.Targets[name]
+		if node.Instance != nil {
+			fmt.Printf("%s\t%s\t%s\n", node.Name,
+				node.Instance.IpAddress,
+				node.Instance.PrivateIpAddress)
 		}
 	}
 
