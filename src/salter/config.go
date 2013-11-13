@@ -77,7 +77,7 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	}
 
 	// Inherited fields for a node
-	inheritedFields := []string {"Username", "Flavor", "RegionId", "Ami", "SGroup", "KeyName"}
+	inheritedFields := []string {"Username", "Flavor", "RegionId", "Ami", "SGroup", "KeyName", "Zone"}
 
 	// Expand the list of nodes so that we have an entry per individual node
 	resolvedNodes := make(map[string]Node)
