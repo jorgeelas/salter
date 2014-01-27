@@ -45,6 +45,28 @@ func (t *Targets) Set(value string) error {
 	return nil
 }
 
+type TagMap map[string]string
+
+func (t *TagMap) String() string {
+	return fmt.Sprint(*t)
+}
+
+func (t *TagMap) Set(value string) error {
+	for _, s := range strings.Split(value, ",") {
+		kv := strings.Split(s, "=")
+		(*t)[kv[0]] = kv[1]
+	}
+	return nil
+}
+
+func (t *TagMap) Merge(otherTags TagMap) {
+	for k, v := range otherTags {
+		if k != "Name" {
+			(*t)[k] = v
+		}
+	}
+}
+
 type Command struct {
 	Fn func() error
 	Usage string
@@ -60,7 +82,7 @@ var ARG_TARGETS Targets
 var ARG_CONFIG_FILE string
 var ARG_ALL bool
 var ARG_SALT_TARGETS string
-
+var ARG_TAGS TagMap
 
 func usage() error {
 	fmt.Println("usage: salter <options> <command>")
@@ -79,6 +101,8 @@ func usage() error {
 }
 
 func init() {
+	ARG_TAGS = make(map[string]string)
+
 	G_DIR = path.Join(os.ExpandEnv("$HOME"), ".salter")
 	G_REGIONS = make(map[string]*Region)
 	G_COMMANDS = make(map[string]Command)
@@ -95,6 +119,7 @@ func init() {
 	G_COMMANDS["bootstrap"] = Command{ Fn: bootstrap,
 		Usage: "Upload Salt configuration and highstate master."}
 	G_COMMANDS["info"] = Command{ Fn: info, Usage:"display internal/external IP addresses for nodes"}
+	G_COMMANDS["tag"] = Command{ Fn: tag, Usage:"(re)apply tags to each AWS node"}
 }
 
 func main() {
@@ -123,6 +148,7 @@ func main() {
 	flag.BoolVar(&ARG_ALL, "a", false, "Apply operations to all nodes")
 	flag.Var(&ARG_TARGETS, "n", "Target nodes for the operation (overrides -a flag)")
 	flag.StringVar(&ARG_SALT_TARGETS, "s", "'*'", "Targets for salt-related operations")
+	flag.Var(&ARG_TAGS, "t", "Tags to apply")
 
 	// Parse it up
 	flag.Parse()
@@ -437,3 +463,18 @@ func bootstrap() error {
 	ARG_SALT_TARGETS = node.Name
 	return highstate()
 }
+
+func tag() error {
+	pForEachValue(G_CONFIG.Targets, func(n *Node) error {
+		err := n.Update()
+		if err != nil {
+			return err
+		}
+		n.Tags.Merge(ARG_TAGS)
+		fmt.Printf("Tagging %s: %s\n", n.Name, n.Tags)
+		return n.ApplyTags()
+	}, 10);
+	return nil
+}
+
+

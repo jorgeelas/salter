@@ -42,7 +42,7 @@ type Node struct {
 	Ami       string
 	SGroup    string
 	KeyName   string
-	Tags      map[string]string
+	Tags      TagMap
 
 	Config    *Config
 	Instance  *ec2.Instance
@@ -137,12 +137,7 @@ func (node *Node) Start(masterIp string) error {
 	fmt.Printf("%s (%s): started\n", node.Name, node.Instance.InstanceId)
 
 	// Instance is now running; apply any tags
-	_, err = node.Conn().CreateTags([]string { node.Instance.InstanceId }, node.ec2Tags())
-	if err != nil {
-		return fmt.Errorf("Failed to apply tags to %s: %+v\n", node.Name, err)
-	}
-
-	return nil
+	return node.ApplyTags()
 }
 
 func (node *Node) Terminate() error {
@@ -254,6 +249,14 @@ func (node *Node) ec2Tags() []ec2.Tag {
 		result = append(result, ec2.Tag{ Key: key, Value: value })
 	}
 	return result
+}
+
+func (node *Node) ApplyTags() error {
+	_, err := node.Conn().CreateTags([]string { node.Instance.InstanceId }, node.ec2Tags())
+	if err != nil {
+		return fmt.Errorf("Failed to apply tags to %s: %+v\n", node.Name, err)
+	}
+	return nil
 }
 
 func (node *Node) GenSaltKey(bits int) ([]byte, []byte, error) {

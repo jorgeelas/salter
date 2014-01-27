@@ -34,7 +34,7 @@ import "regexp"
 
 type Config struct {
 	Nodes        map[string]Node
-	Tags         map[string]TagConfig
+	Tags         map[string]TagMap
 	Aws          AwsConfig
 	Salt         SaltConfig
 	Raw          interface{}
@@ -46,8 +46,6 @@ type Config struct {
 	UserDataTemplate template.Template
 	MaxConcurrent    int
 }
-
-type TagConfig map[string]string
 
 type AwsConfig struct {
 	Username string `toml:"ssh_username"`
@@ -106,6 +104,10 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 				tags, exists := config.Tags[key]
 				if !exists { tags = config.Tags[id] }
 
+				if tags == nil {
+					tags = make(TagMap)
+				}
+
 				inheritFieldsIfEmpty(&n, config.Aws, inheritedFields)
 				n.Name = key
 				n.Count = 0
@@ -118,6 +120,9 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 			inheritFieldsIfEmpty(&node, config.Aws, inheritedFields)
 			node.Config = &config
 			node.Tags = config.Tags[id]
+			if node.Tags == nil {
+				node.Tags = make(TagMap)
+			}
 			resolvedNodes[id] = node
 		}
 	}
