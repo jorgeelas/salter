@@ -63,7 +63,7 @@ type SGroupConfig struct {
 
 type SaltConfig struct {
 	RootDir string `toml:"root"`
-	Environment string
+	Grains map[string]string
 	Timeout int
 	UserDataFile string `toml:"userdata"`
 }
@@ -205,7 +205,7 @@ type UserDataVars struct {
 	SaltMasterIP string
 	Roles []string
 	IsMaster bool
-	Environment string
+	Grains map[string]string
 }
 
 func (config *Config) generateUserData(host string, roles []string, masterIp string) ([]byte, error) {
@@ -216,7 +216,7 @@ func (config *Config) generateUserData(host string, roles []string, masterIp str
 			SaltMasterIP: masterIp,
 			Roles: roles,
 			IsMaster: (masterIp == "127.0.0.1"),
-			Environment: config.Salt.Environment,
+			Grains: config.Salt.Grains,
 		})
 	if err != nil {
 		fmt.Printf("Failed to generate user-data for %s: %+v\n", host, err)
