@@ -285,7 +285,7 @@ func csshx() error {
 
 	for _, name := range names {
 		fmt.Printf(" * %s\n", name)
-		args = append(args, G_CONFIG.Targets[name].Instance.IpAddress)
+		args = append(args, G_CONFIG.Targets[name].Instance.PublicIpAddress)
 	}
 
 	env := []string {
@@ -311,7 +311,7 @@ func hosts() error {
 	for _, name := range names {
 		node := G_CONFIG.Targets[name]
 		if node.Instance != nil {
-			fmt.Printf("%s\t%s\n", node.Instance.IpAddress, node.Name)
+			fmt.Printf("%s\t%s\n", node.Instance.PublicIpAddress, node.Name)
 		}
 	}
 
@@ -331,7 +331,7 @@ func info() error {
 		node := G_CONFIG.Targets[name]
 		if node.Instance != nil {
 			fmt.Printf("%s\t%s\t%s\n", node.Name,
-				node.Instance.IpAddress,
+				node.Instance.PublicIpAddress,
 				node.Instance.PrivateIpAddress)
 		}
 	}
@@ -376,7 +376,7 @@ func upload() error {
 		fmt.Sprintf("%s@%s:/srv/salt", G_CONFIG.Aws.Username, node.Instance.DNSName))
 	rsync.Stdout = os.Stdout
 	rsync.Stderr = os.Stdout
-	fmt.Printf("Uploading %s to %s:/srv/salt...\n", G_CONFIG.Salt.RootDir, node.Instance.IpAddress)
+	fmt.Printf("Uploading %s to %s:/srv/salt...\n", G_CONFIG.Salt.RootDir, node.Instance.PublicIpAddress)
 	err = rsync.Run()
 	if err != nil {
 		fmt.Printf("Rsync failed: %+v\n", err)

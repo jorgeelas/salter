@@ -23,8 +23,8 @@ package main
 
 import "strings"
 import "sync"
-import "github.com/dizzyd/goamz/aws"
-import "github.com/dizzyd/goamz/ec2"
+import "github.com/mitchellh/goamz/aws"
+import "github.com/mitchellh/goamz/ec2"
 import "log"
 
 type Region struct {

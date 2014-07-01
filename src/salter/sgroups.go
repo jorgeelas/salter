@@ -26,7 +26,7 @@ import "fmt"
 import "net"
 import "strings"
 import "strconv"
-import "github.com/dizzyd/goamz/ec2"
+import "github.com/mitchellh/goamz/ec2"
 
 type PermArray []ec2.IPPerm
 

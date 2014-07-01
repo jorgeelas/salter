@@ -1,12 +1,12 @@
 
 TOP := $(shell pwd)
 
-all:
-	GOPATH=$(TOP) go install salter
+all: .vendor
+	GOPATH=$(TOP) goop go install salter
 
-deps:
-	git submodule update --init
+.vendor:
+	goop install
 
 clean:
-	@rm -rf pkg bin
+	@rm -rf pkg bin .vendor
 

@@ -32,8 +32,6 @@ import "io/ioutil"
 import "crypto/rand"
 import "crypto/md5"
 import "path/filepath"
-import "io"
-import "crypto"
 import "os"
 import "code.google.com/p/go.crypto/ssh"
 
@@ -143,42 +141,8 @@ func generateKey(filename string, bits int) error {
 
 
 // Construct a public key authentictor suitable for using in a ssh.ClientConfig
-func PublicKeyAuth(k Key) []ssh.ClientAuth {
-	kc := new(keychain)
-	kc.keys = append(kc.keys, &(k.Key))
-	return []ssh.ClientAuth { ssh.ClientAuthKeyring(kc) }
+func PublicKeyAuth(k Key) []ssh.AuthMethod {
+	authKey, _ := ssh.NewSignerFromKey(k)
+	return []ssh.AuthMethod { ssh.PublicKeys(authKey) }
 }
 
-//
-// SSH-specific interface for performing client auth
-//
-type keychain struct {
-	keys []interface{}
-}
-
-func (k *keychain) Key(i int) (interface{}, error) {
-	if i < 0 || i >= len(k.keys) {
-		return nil, nil
-	}
-
-	switch key := k.keys[i].(type) {
-	case *rsa.PrivateKey:
-		return &key.PublicKey, nil
-	default:
-		return nil, fmt.Errorf("keychain.Key: unsupported key type - %+v\n",
-			k.keys[i])
-	}
-}
-
-func (k *keychain) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
-	hashFunc := crypto.SHA1
-	h := hashFunc.New()
-	h.Write(data)
-	digest := h.Sum(nil)
-	switch key := k.keys[i].(type) {
-	case *rsa.PrivateKey:
-		return rsa.SignPKCS1v15(rand, key, hashFunc, digest)
-	}
-	return nil, fmt.Errorf("keychain.Sign: unsupported key type - %+v\n",
-		k.keys[i])
-}
