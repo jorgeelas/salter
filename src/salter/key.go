@@ -142,7 +142,11 @@ func generateKey(filename string, bits int) error {
 
 // Construct a public key authentictor suitable for using in a ssh.ClientConfig
 func PublicKeyAuth(k Key) []ssh.AuthMethod {
-	authKey, _ := ssh.NewSignerFromKey(k)
+	authKey, err := ssh.NewSignerFromKey(&(k.Key))
+	if err != nil {
+		fmt.Printf("Failed to construct public key auth struct from %s: %+v\n", k.Name, err)
+		return nil
+	}
 	return []ssh.AuthMethod { ssh.PublicKeys(authKey) }
 }
 
