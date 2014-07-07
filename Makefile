@@ -1,12 +1,27 @@
 
+GOOP = $(shell which goop)
+ifndef $(GOOP)
+GOOP = bin/goop
+endif
+
 TOP := $(shell pwd)
 
-all:
-	GOPATH=$(TOP) go install salter
+all: .vendor
+	GOPATH=$(TOP) $(GOOP) go install salter
 
-deps:
-	git submodule update --init
+ifeq ($(GOOP), bin/goop)
+.vendor: bin/goop
+else
+.vendor:
+endif
+	GOPATH=$(TOP)/.vendor $(GOOP) install
 
 clean:
-	@rm -rf pkg bin
+	@rm -rf pkg bin .vendor .goop
+
+bin/goop:
+	@mkdir -p bin
+	@mkdir .goop
+	(cd .goop && GOPATH=$(TOP)/.goop go get github.com/nitrous-io/goop)
+	mv .goop/bin/goop bin
 

@@ -160,7 +160,7 @@ func displayNodeInfo(node *Node) {
 	}
 
 	// Display launch info
-	fmt.Printf("%s (%s): running %s", node.Name, node.Instance.IpAddress, uptime)
+	fmt.Printf("%s (%s): running %s", node.Name, node.Instance.PublicIpAddress, uptime)
 }
 
 func waitForRunning(node *Node) error {

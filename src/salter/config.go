@@ -27,7 +27,7 @@ import "os"
 import "path/filepath"
 import "crypto/md5"
 import "github.com/BurntSushi/toml"
-import "github.com/dizzyd/goamz/aws"
+import "github.com/mitchellh/goamz/aws"
 import "text/template"
 import "bytes"
 import "regexp"
@@ -206,6 +206,7 @@ type UserDataVars struct {
 	Roles []string
 	IsMaster bool
 	Grains map[string]string
+	Environment string
 }
 
 func (config *Config) generateUserData(host string, roles []string, masterIp string) ([]byte, error) {
@@ -217,6 +218,7 @@ func (config *Config) generateUserData(host string, roles []string, masterIp str
 			Roles: roles,
 			IsMaster: (masterIp == "127.0.0.1"),
 			Grains: config.Salt.Grains,
+			Environment: "test",
 		})
 	if err != nil {
 		fmt.Printf("Failed to generate user-data for %s: %+v\n", host, err)

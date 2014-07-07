@@ -23,8 +23,8 @@ package main
 
 import "fmt"
 import "log"
-import "github.com/dizzyd/goamz/aws"
-import "github.com/dizzyd/goamz/ec2"
+import "github.com/mitchellh/goamz/aws"
+import "github.com/mitchellh/goamz/ec2"
 import "code.google.com/p/go.crypto/ssh"
 import "crypto/x509"
 import "encoding/pem"
@@ -46,7 +46,7 @@ type Node struct {
 
 	Config    *Config
 	Instance  *ec2.Instance
-	SshClient *ssh.ClientConn
+	SshClient *ssh.Client
 }
 
 func (node *Node) Conn() *ec2.EC2 {
