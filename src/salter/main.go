@@ -73,7 +73,6 @@ type Command struct {
 }
 
 var G_CONFIG   Config
-var G_REGIONS  map[string]*Region
 var G_DIR      string
 var G_LOG      *os.File
 var G_COMMANDS map[string]Command
@@ -104,7 +103,7 @@ func init() {
 	ARG_TAGS = make(map[string]string)
 
 	G_DIR = path.Join(os.ExpandEnv("$HOME"), ".salter")
-	G_REGIONS = make(map[string]*Region)
+
 	G_COMMANDS = make(map[string]Command)
 	G_COMMANDS["launch"] = Command{ Fn: launch, Usage: "launch instances on EC2"}
 	G_COMMANDS["teardown"] = Command{ Fn: teardown, Usage: "terminates instances on EC2"}
@@ -181,6 +180,9 @@ func main() {
 
 	// Make config globally available
 	G_CONFIG = config
+
+	// Start region cache
+	StartRegionCache(&G_CONFIG)
 
 	// Walk all the nodes, caching info about their regions
 	for _, node := range G_CONFIG.Nodes {

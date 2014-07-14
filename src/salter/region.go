@@ -41,24 +41,59 @@ type RegionalSGroup struct {
 	RegionId string
 }
 
+type regionCacheRequest struct {
+	Name   string
+	Region *Region
+	Chan   chan error
+}
+
+var G_REGION_CACHE chan *regionCacheRequest
+
+func init() {
+	G_REGION_CACHE = make(chan *regionCacheRequest)
+}
+
+func StartRegionCache(config *Config) {
+	go regionCacheLoop(config.AwsAuth, config.DataDir)
+}
+
 func GetRegion(name string) (*Region, error) {
-	region, found := G_REGIONS[name]
-	if !found {
-		conn := ec2.New(G_CONFIG.AwsAuth, aws.Regions[name])
-		region := &Region{
-			Conn: *conn,
-			dataDir: G_CONFIG.DataDir,
-		}
-
-		err := region.Refresh()
-		if err != nil {
-			return region, err
-		}
-
-		G_REGIONS[name] = region
+	req := regionCacheRequest{
+		Name: name,
+		Chan: make(chan error),
 	}
+	defer close(req.Chan)
 
-	return region, nil
+	G_REGION_CACHE <- &req
+
+	err := <- req.Chan
+	return req.Region, err
+}
+
+func regionCacheLoop(awsAuth aws.Auth, dataDir string) {
+	regions := make(map[string]*Region)
+	for {
+		req := <-G_REGION_CACHE
+		region, found := regions[req.Name]
+		if !found {
+			conn := ec2.New(awsAuth, aws.Regions[req.Name])
+			region = &Region{
+				Conn: *conn,
+				dataDir: dataDir,
+			}
+
+			err := region.Refresh()
+			if err != nil {
+				req.Chan <- err
+				continue
+			}
+
+			regions[req.Name] = region
+		}
+
+		req.Region = region
+		req.Chan <- nil
+	}
 }
 
 func RegionKeyExists(name string, regionId string) bool {
