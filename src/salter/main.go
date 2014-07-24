@@ -236,7 +236,9 @@ func sshto() error {
 
 	fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
 	closeFrom(3)
-	syscall.Exec("/usr/bin/ssh", args, env)
+	err = syscall.Exec("/usr/bin/ssh", args, env)
+	fmt.Println("Failed to execute: %s", err)
+	syscall.Exit(1)
 	return nil
 }
 
@@ -279,7 +281,8 @@ func csshx() error {
 		key.Filename)
 
 	args := []string {
-		csshPath, "--ssh_args", sshArgs,
+		csshPath,
+		"--ssh_args", sshArgs,
 		"-l", G_CONFIG.Aws.Username,
 	}
 
@@ -295,7 +298,9 @@ func csshx() error {
 		"TERM=" + os.Getenv("TERM"),
 	}
 
-	syscall.Exec("/usr/local/bin/csshX", args, env)
+	err = syscall.Exec(csshPath, args, env)
+	fmt.Println("Failed to execute: %s", err)
+	syscall.Exit(1)
 	return nil
 }
 
