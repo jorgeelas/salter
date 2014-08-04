@@ -28,12 +28,12 @@ import "github.com/mitchellh/goamz/ec2"
 import "log"
 
 type Region struct {
-	Keys      map[string]Key	  // Key name -> Key (key.go)
-	Conn      ec2.EC2
+	Keys map[string]Key // Key name -> Key (key.go)
+	Conn ec2.EC2
 
-	SGroups   map[string]RegionalSGroup // SG name -> Info
+	SGroups map[string]RegionalSGroup // SG name -> Info
 
-	dataDir   string
+	dataDir string
 }
 
 type RegionalSGroup struct {
@@ -66,7 +66,7 @@ func GetRegion(name string) (*Region, error) {
 
 	G_REGION_CACHE <- &req
 
-	err := <- req.Chan
+	err := <-req.Chan
 	return req.Region, err
 }
 
@@ -78,7 +78,7 @@ func regionCacheLoop(awsAuth aws.Auth, dataDir string) {
 		if !found {
 			conn := ec2.New(awsAuth, aws.Regions[req.Name])
 			region = &Region{
-				Conn: *conn,
+				Conn:    *conn,
 				dataDir: dataDir,
 			}
 
@@ -202,11 +202,11 @@ func (r *Region) Refresh() error {
 			if group.VpcId != "" {
 				continue
 			}
-			rSgroups[group.Name] = RegionalSGroup{ group, r.Conn.Region.Name }
+			rSgroups[group.Name] = RegionalSGroup{group, r.Conn.Region.Name}
 		}
 
 		// Insert amazon-elb as a valid group
-		amazonElbSg := RegionalSGroup{ RegionId: r.Conn.Region.Name }
+		amazonElbSg := RegionalSGroup{RegionId: r.Conn.Region.Name}
 		amazonElbSg.Name = "amazon-elb-sg"
 		amazonElbSg.OwnerId = "amazon-elb"
 		rSgroups["amazon-elb-sg"] = amazonElbSg
@@ -226,7 +226,9 @@ func (r *Region) Refresh() error {
 
 func findTag(tags []ec2.Tag, name string) (string, bool) {
 	for _, tag := range tags {
-		if tag.Key == name { return tag.Value, true }
+		if tag.Key == name {
+			return tag.Value, true
+		}
 	}
 	return "", false
 }

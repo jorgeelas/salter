@@ -27,8 +27,12 @@ import "fmt"
 
 func FileExists(filename string) bool {
 	_, err := os.Stat(filename)
-	if err != nil { return false }
-	if os.IsNotExist(err) { return false }
+	if err != nil {
+		return false
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
 	return true
 }
 
@@ -37,11 +41,10 @@ func HasKey(key string, m *map[string]interface{}) bool {
 	return hasKey
 }
 
-
 func pForEachValue(m interface{}, f interface{}, concurrent int) {
 	mVal := reflect.ValueOf(m)
 	fVal := reflect.ValueOf(f)
-	fType:= fVal.Type()
+	fType := fVal.Type()
 
 	// If key is not already a pointer AND the function takes a pointer to
 	// the value type we need to set a flag
@@ -59,10 +62,10 @@ func pForEachValue(m interface{}, f interface{}, concurrent int) {
 					// Construct a pointer to the value
 					ptr := reflect.New(vVal.Type())
 					ptr.Elem().Set(vVal)
-					fVal.Call([]reflect.Value { ptr })
+					fVal.Call([]reflect.Value{ptr})
 					mVal.SetMapIndex(kVal, ptr.Elem()) // Make sure map has latest value
 				} else {
-					fVal.Call([]reflect.Value { vVal })
+					fVal.Call([]reflect.Value{vVal})
 				}
 			}
 
@@ -79,12 +82,11 @@ func pForEachValue(m interface{}, f interface{}, concurrent int) {
 	close(runQueue)
 
 	for i := 0; i < concurrent; i++ {
-		<- doneQueue
+		<-doneQueue
 	}
 
 	close(doneQueue)
 }
-
 
 func inheritFieldsIfEmpty(to interface{}, from interface{}, fieldNames []string) {
 	toVal := reflect.Indirect(reflect.ValueOf(to))
@@ -105,49 +107,49 @@ func isEmpty(v reflect.Value) bool {
 	}
 
 	switch v.Kind() {
-        case reflect.Int:
+	case reflect.Int:
 		return v.Int() == 0
-        case reflect.Int8:
+	case reflect.Int8:
 		return v.Int() == 0
-        case reflect.Int16:
+	case reflect.Int16:
 		return v.Int() == 0
-        case reflect.Int32:
+	case reflect.Int32:
 		return v.Int() == 0
-        case reflect.Int64:
+	case reflect.Int64:
 		return v.Int() == 0
-        case reflect.Uint:
+	case reflect.Uint:
 		return v.Uint() == 0
-        case reflect.Uint8:
+	case reflect.Uint8:
 		return v.Uint() == 0
-        case reflect.Uint16:
+	case reflect.Uint16:
 		return v.Uint() == 0
-        case reflect.Uint32:
+	case reflect.Uint32:
 		return v.Uint() == 0
-        case reflect.Uint64:
+	case reflect.Uint64:
 		return v.Uint() == 0
-        case reflect.Float32:
+	case reflect.Float32:
 		return v.Int() == 0.0
-        case reflect.Float64:
+	case reflect.Float64:
 		return v.Int() == 0.0
-        case reflect.Complex64:
+	case reflect.Complex64:
 		return v.Int() == 0.0
-        case reflect.Complex128:
+	case reflect.Complex128:
 		return v.Int() == 0.0
-        case reflect.Array:
+	case reflect.Array:
 		return v.IsNil()
-        case reflect.Chan:
+	case reflect.Chan:
 		return v.IsNil()
-        case reflect.Func:
+	case reflect.Func:
 		return v.IsNil()
-        case reflect.Interface:
+	case reflect.Interface:
 		return v.IsNil()
-        case reflect.Map:
+	case reflect.Map:
 		return v.IsNil()
-        case reflect.Ptr:
+	case reflect.Ptr:
 		return v.IsNil()
-        case reflect.Slice:
+	case reflect.Slice:
 		return v.IsNil()
-        case reflect.String:
+	case reflect.String:
 		return v.Len() == 0
 	default:
 		panic(fmt.Sprintf("IsEmpty() unexpected value kind: %+v\n", v))

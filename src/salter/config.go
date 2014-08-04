@@ -33,15 +33,15 @@ import "bytes"
 import "regexp"
 
 type Config struct {
-	Nodes        map[string]Node
-	Tags         map[string]TagMap
-	Aws          AwsConfig
-	Salt         SaltConfig
-	Raw          interface{}
-	Targets      map[string]Node
-	SGroups      map[string]SGroupConfig
-	AwsAuth      aws.Auth
-	DataDir      string
+	Nodes   map[string]Node
+	Tags    map[string]TagMap
+	Aws     AwsConfig
+	Salt    SaltConfig
+	Raw     interface{}
+	Targets map[string]Node
+	SGroups map[string]SGroupConfig
+	AwsAuth aws.Auth
+	DataDir string
 
 	UserDataTemplate template.Template
 	MaxConcurrent    int
@@ -62,9 +62,9 @@ type SGroupConfig struct {
 }
 
 type SaltConfig struct {
-	RootDir string `toml:"root"`
-	Grains map[string]string
-	Timeout int
+	RootDir      string `toml:"root"`
+	Grains       map[string]string
+	Timeout      int
 	UserDataFile string `toml:"userdata"`
 }
 
@@ -75,7 +75,7 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 	}
 
 	// Inherited fields for a node
-	inheritedFields := []string {"Username", "Flavor", "RegionId", "Ami", "SGroup", "KeyName", "Zone"}
+	inheritedFields := []string{"Username", "Flavor", "RegionId", "Ami", "SGroup", "KeyName", "Zone"}
 
 	// Expand the list of nodes so that we have an entry per individual node
 	resolvedNodes := make(map[string]Node)
@@ -102,7 +102,9 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 				// Get the tags specific to this generated node,
 				// or fallback to generic identifier
 				tags, exists := config.Tags[key]
-				if !exists { tags = config.Tags[id] }
+				if !exists {
+					tags = config.Tags[id]
+				}
 
 				if tags == nil {
 					tags = make(TagMap)
@@ -136,7 +138,6 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 		config.Salt.UserDataFile = "bootstrap/user.data"
 	}
 
-
 	// Load AWS auth info from environment
 	auth, err := aws.EnvAuth()
 	if err != nil {
@@ -152,7 +153,6 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 		return
 	}
 	config.UserDataTemplate = *userDataTemplate
-
 
 	// Initialize our result
 	config.AwsAuth = auth
@@ -201,24 +201,24 @@ func selectNodes(target string, nodes map[string]Node, matched *map[string]Node)
 }
 
 type UserDataVars struct {
-	Hostname string
+	Hostname     string
 	SaltMasterIP string
-	Roles []string
-	IsMaster bool
-	Grains map[string]string
-	Environment string
+	Roles        []string
+	IsMaster     bool
+	Grains       map[string]string
+	Environment  string
 }
 
 func (config *Config) generateUserData(host string, roles []string, masterIp string) ([]byte, error) {
 	var userDataBuf bytes.Buffer
 	err := config.UserDataTemplate.Execute(&userDataBuf,
 		UserDataVars{
-			Hostname: host,
+			Hostname:     host,
 			SaltMasterIP: masterIp,
-			Roles: roles,
-			IsMaster: (masterIp == "127.0.0.1"),
-			Grains: config.Salt.Grains,
-			Environment: "test",
+			Roles:        roles,
+			IsMaster:     (masterIp == "127.0.0.1"),
+			Grains:       config.Salt.Grains,
+			Environment:  "test",
 		})
 	if err != nil {
 		fmt.Printf("Failed to generate user-data for %s: %+v\n", host, err)
@@ -226,7 +226,6 @@ func (config *Config) generateUserData(host string, roles []string, masterIp str
 	}
 	return userDataBuf.Bytes(), nil
 }
-
 
 func (config *Config) findNodeByRole(role string) *Node {
 	for _, node := range config.Nodes {
@@ -239,8 +238,7 @@ func (config *Config) findNodeByRole(role string) *Node {
 	return nil
 }
 
-
-func (config* Config) initDataDir() {
+func (config *Config) initDataDir() {
 	// The data directory is always suffixed with a hash of the AWS access
 	// key + secret to ensure that individual accounts don't tromp all over
 	// each other.

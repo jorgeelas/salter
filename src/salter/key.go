@@ -49,24 +49,23 @@ type pkcs8 struct {
 	PrivateKey []byte
 }
 
-var asn1TagNull       = 5
-var oidPublicKeyRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
-var rsaAlgorithmIdentifier = pkix.AlgorithmIdentifier {
-	Algorithm: oidPublicKeyRSA,
+var asn1TagNull = 5
+var oidPublicKeyRSA = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
+var rsaAlgorithmIdentifier = pkix.AlgorithmIdentifier{
+	Algorithm:  oidPublicKeyRSA,
 	Parameters: asn1.RawValue{Tag: asn1TagNull},
 }
 
 // Primitive PKCS-8 encoder for a RSA private key
 func marshalToPKCS8(privKey *rsa.PrivateKey) []byte {
-	pk1 := pkcs8 { Algo: rsaAlgorithmIdentifier,
-		       PrivateKey: x509.MarshalPKCS1PrivateKey(privKey) }
+	pk1 := pkcs8{Algo: rsaAlgorithmIdentifier,
+		PrivateKey: x509.MarshalPKCS1PrivateKey(privKey)}
 	b, _ := asn1.Marshal(pk1)
 	return b
 }
 
-
 func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
-	filename := filepath.Join(keyDir, keyName + ".pem")
+	filename := filepath.Join(keyDir, keyName+".pem")
 	if FileExists(filename) {
 		// Ensure the key file is not og accessible
 		info, _ := os.Stat(filename)
@@ -119,12 +118,11 @@ func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
 		}
 
 		// Successfully validated key fingerprint; return the key
-		return &Key{ Name: keyName, Key: *privKey, Filename: filename }, nil
+		return &Key{Name: keyName, Key: *privKey, Filename: filename}, nil
 	} else {
 		return nil, fmt.Errorf("Missing file for %s: %s", filename, remoteFingerprint)
 	}
 }
-
 
 // Generate a new RSA key, serializing to a PKCS-1 PEM file
 func generateKey(filename string, bits int) error {
@@ -134,11 +132,10 @@ func generateKey(filename string, bits int) error {
 	}
 
 	// Save the private key to local disk
-	block := pem.Block { Type: "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(privKey) }
+	block := pem.Block{Type: "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privKey)}
 	return ioutil.WriteFile(filename, pem.EncodeToMemory(&block), 0600)
 }
-
 
 // Construct a public key authentictor suitable for using in a ssh.ClientConfig
 func PublicKeyAuth(k Key) []ssh.AuthMethod {
@@ -147,6 +144,5 @@ func PublicKeyAuth(k Key) []ssh.AuthMethod {
 		fmt.Printf("Failed to construct public key auth struct from %s: %+v\n", k.Name, err)
 		return nil
 	}
-	return []ssh.AuthMethod { ssh.PublicKeys(authKey) }
+	return []ssh.AuthMethod{ssh.PublicKeys(authKey)}
 }
-

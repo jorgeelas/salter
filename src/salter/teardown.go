@@ -50,7 +50,7 @@ func teardown() error {
 
 	// Wait for each of the goroutines to shutdown
 	for i := 0; i < G_CONFIG.MaxConcurrent; i++ {
-		<- shutdownQueue
+		<-shutdownQueue
 	}
 
 	return nil
@@ -71,4 +71,3 @@ func teardownNode(node *Node) {
 
 	// TODO: Revoke key from master
 }
-
