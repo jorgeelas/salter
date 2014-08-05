@@ -44,7 +44,7 @@ func sgroups() error {
 				node.Name, node.SGroup, err)
 			return err
 		}
-		groups[node.RegionId + "/" + node.SGroup] = sg
+		groups[node.RegionId+"/"+node.SGroup] = sg
 	}
 
 	// Now, for each of the groups, make sure any and all locally-defined
@@ -95,7 +95,6 @@ func sgroups() error {
 	return nil
 }
 
-
 func isCidr(s string) bool {
 	_, _, err := net.ParseCIDR(s)
 	return err == nil
@@ -103,7 +102,7 @@ func isCidr(s string) bool {
 
 func setCidrOrGroup(part, rule, region string, perm *ec2.IPPerm) (*ec2.IPPerm, error) {
 	if isCidr(part) {
-		perm.SourceIPs = []string { part }
+		perm.SourceIPs = []string{part}
 	} else {
 		// Not a CIDR - lookup the corresponding security group
 		if !RegionSGExists(part, region) {
@@ -112,12 +111,12 @@ func setCidrOrGroup(part, rule, region string, perm *ec2.IPPerm) (*ec2.IPPerm, e
 		}
 
 		sg := RegionSG(part, region)
-		usg := ec2.UserSecurityGroup {
-			Id: sg.Id,
-			Name: sg.Name,
+		usg := ec2.UserSecurityGroup{
+			Id:      sg.Id,
+			Name:    sg.Name,
 			OwnerId: sg.OwnerId,
 		}
-		perm.SourceGroups = []ec2.UserSecurityGroup { usg }
+		perm.SourceGroups = []ec2.UserSecurityGroup{usg}
 	}
 	return perm, nil
 }
@@ -126,10 +125,10 @@ func parseSGRule(rule string, region string) (*ec2.IPPerm, error) {
 	var perm ec2.IPPerm
 	parts := strings.SplitN(rule, ":", 4)
 	switch len(parts) {
-	case 2:			// Proto:(IpCidr|GroupId)
+	case 2: // Proto:(IpCidr|GroupId)
 		perm.Protocol = parts[0]
 		return setCidrOrGroup(parts[1], rule, region, &perm)
-	case 4:			// Proto:FromPort:ToPort:(IpCidr:GroupId)
+	case 4: // Proto:FromPort:ToPort:(IpCidr:GroupId)
 		perm.Protocol = parts[0]
 		perm.FromPort, _ = strconv.Atoi(parts[1])
 		perm.ToPort, _ = strconv.Atoi(parts[2])
@@ -138,7 +137,6 @@ func parseSGRule(rule string, region string) (*ec2.IPPerm, error) {
 		return nil, fmt.Errorf("Unknown rule format: %s", rule)
 	}
 }
-
 
 func (perms PermArray) contains(perm ec2.IPPerm) bool {
 	compareString := func(s1, s2 []string) bool {
@@ -175,13 +173,12 @@ func (perms PermArray) contains(perm ec2.IPPerm) bool {
 
 	for _, p := range perms {
 		if p.Protocol == perm.Protocol &&
-		p.FromPort == perm.FromPort &&
-		p.ToPort == perm.ToPort &&
-		compareString(p.SourceIPs, perm.SourceIPs) &&
-		compareSG(p.SourceGroups, perm.SourceGroups) {
+			p.FromPort == perm.FromPort &&
+			p.ToPort == perm.ToPort &&
+			compareString(p.SourceIPs, perm.SourceIPs) &&
+			compareSG(p.SourceGroups, perm.SourceGroups) {
 			return true
 		}
 	}
 	return false
 }
-

@@ -33,16 +33,16 @@ import "crypto/rsa"
 import "bytes"
 
 type Node struct {
-	Name      string
-	Roles     []string
-	Count     int
-	Flavor    string
-	RegionId  string `toml:"region"`
-	Zone      string `toml:"zone"`
-	Ami       string
-	SGroup    string
-	KeyName   string
-	Tags      TagMap
+	Name     string
+	Roles    []string
+	Count    int
+	Flavor   string
+	RegionId string `toml:"region"`
+	Zone     string `toml:"zone"`
+	Ami      string
+	SGroup   string
+	KeyName  string
+	Tags     TagMap
 
 	Config    *Config
 	Instance  *ec2.Instance
@@ -117,16 +117,16 @@ func (node *Node) Start(masterIp string) error {
 	}
 
 	// We only permit a single security group right now per-node
-	sgroups := []ec2.SecurityGroup { RegionSG(node.SGroup, node.RegionId).SecurityGroup }
+	sgroups := []ec2.SecurityGroup{RegionSG(node.SGroup, node.RegionId).SecurityGroup}
 
-	runInst := ec2.RunInstances {
-		ImageId: node.Ami,
-		KeyName: node.KeyName,
-		InstanceType: node.Flavor,
-		UserData: userData,
+	runInst := ec2.RunInstances{
+		ImageId:        node.Ami,
+		KeyName:        node.KeyName,
+		InstanceType:   node.Flavor,
+		UserData:       userData,
 		SecurityGroups: sgroups,
-		AvailZone: node.Zone,
-		BlockDevices: deviceMappings(node.Flavor)}
+		AvailZone:      node.Zone,
+		BlockDevices:   deviceMappings(node.Flavor)}
 	runResp, err := node.Conn().RunInstances(&runInst)
 	if err != nil {
 		return fmt.Errorf("launch failed: %+v\n", err)
@@ -146,7 +146,7 @@ func (node *Node) Terminate() error {
 		return fmt.Errorf("node not running")
 	}
 
-	_, err := node.Conn().TerminateInstances([]string { node.Instance.InstanceId })
+	_, err := node.Conn().TerminateInstances([]string{node.Instance.InstanceId})
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func (node *Node) SshOpen() error {
 			Auth: PublicKeyAuth(RegionKey(node.KeyName, node.RegionId)),
 		}
 
-		client, err := ssh.Dial("tcp", node.Instance.DNSName + ":22", &config)
+		client, err := ssh.Dial("tcp", node.Instance.DNSName+":22", &config)
 		if err != nil {
 			return err
 		}
@@ -206,7 +206,7 @@ func (node *Node) SshRunOutput(cmd string) ([]byte, error) {
 	if node.SshClient == nil {
 		err := node.SshOpen()
 		if err != nil {
-			return nil,err
+			return nil, err
 		}
 	}
 
@@ -219,7 +219,6 @@ func (node *Node) SshRunOutput(cmd string) ([]byte, error) {
 	log.Printf("%s: %s\n", node.Name, cmd)
 	return session.CombinedOutput(cmd)
 }
-
 
 func (node *Node) SshUpload(remoteFilename string, data []byte) error {
 	if node.SshClient == nil {
@@ -244,15 +243,15 @@ func (node *Node) SshUpload(remoteFilename string, data []byte) error {
 }
 
 func (node *Node) ec2Tags() []ec2.Tag {
-	result := []ec2.Tag{ ec2.Tag{ Key: "Name", Value: node.Name }}
+	result := []ec2.Tag{ec2.Tag{Key: "Name", Value: node.Name}}
 	for key, value := range node.Tags {
-		result = append(result, ec2.Tag{ Key: key, Value: value })
+		result = append(result, ec2.Tag{Key: key, Value: value})
 	}
 	return result
 }
 
 func (node *Node) ApplyTags() error {
-	_, err := node.Conn().CreateTags([]string { node.Instance.InstanceId }, node.ec2Tags())
+	_, err := node.Conn().CreateTags([]string{node.Instance.InstanceId}, node.ec2Tags())
 	if err != nil {
 		return fmt.Errorf("Failed to apply tags to %s: %+v\n", node.Name, err)
 	}
@@ -275,7 +274,7 @@ func (node *Node) GenSaltKey(bits int) ([]byte, []byte, error) {
 }
 
 func PemEncode(data []byte, header string) []byte {
-	b := pem.Block{ Type: header, Bytes: data }
+	b := pem.Block{Type: header, Bytes: data}
 	return pem.EncodeToMemory(&b)
 }
 
@@ -317,7 +316,7 @@ func deviceMappingGenerator(count int) []ec2.BlockDeviceMapping {
 
 	mappings := make([]ec2.BlockDeviceMapping, 0)
 	for i := 0; i < count; i++ {
-		device := fmt.Sprintf("/dev/sd%c1", 'b' + i)
+		device := fmt.Sprintf("/dev/sd%c1", 'b'+i)
 		virtual := fmt.Sprintf("ephemeral%d", i)
 		mappings = append(mappings, ec2.BlockDeviceMapping{DeviceName: device,
 			VirtualName: virtual})

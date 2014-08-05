@@ -68,13 +68,13 @@ func (t *TagMap) Merge(otherTags TagMap) {
 }
 
 type Command struct {
-	Fn func() error
+	Fn    func() error
 	Usage string
 }
 
-var G_CONFIG   Config
-var G_DIR      string
-var G_LOG      *os.File
+var G_CONFIG Config
+var G_DIR string
+var G_LOG *os.File
 var G_COMMANDS map[string]Command
 
 var ARG_TARGETS Targets
@@ -105,20 +105,20 @@ func init() {
 	G_DIR = path.Join(os.ExpandEnv("$HOME"), ".salter")
 
 	G_COMMANDS = make(map[string]Command)
-	G_COMMANDS["launch"] = Command{ Fn: launch, Usage: "launch instances on EC2"}
-	G_COMMANDS["teardown"] = Command{ Fn: teardown, Usage: "terminates instances on EC2"}
-	G_COMMANDS["ssh"] = Command{ Fn: sshto, Usage: "open a SSH session to a EC2 instance"}
-	G_COMMANDS["csshx"] = Command { Fn: csshx, Usage: "open a series of SSH sessions to EC2 instances via csshX" }
-	G_COMMANDS["hosts"] = Command{ Fn: hosts, Usage: "generate a list of live nodes on EC2"}
-	G_COMMANDS["upload"] = Command{ Fn: upload, Usage: "upload Salt configuration to the Salt master"}
-	G_COMMANDS["highstate"] = Command{ Fn: highstate, Usage: "invoke Salt highstate on the Salt master"}
-	G_COMMANDS["sgroups"] = Command{ Fn: sgroups, Usage: "generate security groups from configuration"}
-	G_COMMANDS["help"] = Command{ Fn: usage, Usage: "display help"}
-	G_COMMANDS["dump"] = Command{ Fn: dump, Usage: "dump generated node definitions"}
-	G_COMMANDS["bootstrap"] = Command{ Fn: bootstrap,
+	G_COMMANDS["launch"] = Command{Fn: launch, Usage: "launch instances on EC2"}
+	G_COMMANDS["teardown"] = Command{Fn: teardown, Usage: "terminates instances on EC2"}
+	G_COMMANDS["ssh"] = Command{Fn: sshto, Usage: "open a SSH session to a EC2 instance"}
+	G_COMMANDS["csshx"] = Command{Fn: csshx, Usage: "open a series of SSH sessions to EC2 instances via csshX"}
+	G_COMMANDS["hosts"] = Command{Fn: hosts, Usage: "generate a list of live nodes on EC2"}
+	G_COMMANDS["upload"] = Command{Fn: upload, Usage: "upload Salt configuration to the Salt master"}
+	G_COMMANDS["highstate"] = Command{Fn: highstate, Usage: "invoke Salt highstate on the Salt master"}
+	G_COMMANDS["sgroups"] = Command{Fn: sgroups, Usage: "generate security groups from configuration"}
+	G_COMMANDS["help"] = Command{Fn: usage, Usage: "display help"}
+	G_COMMANDS["dump"] = Command{Fn: dump, Usage: "dump generated node definitions"}
+	G_COMMANDS["bootstrap"] = Command{Fn: bootstrap,
 		Usage: "Upload Salt configuration and highstate master."}
-	G_COMMANDS["info"] = Command{ Fn: info, Usage:"display internal/external IP addresses for nodes"}
-	G_COMMANDS["tag"] = Command{ Fn: tag, Usage:"(re)apply tags to each AWS node"}
+	G_COMMANDS["info"] = Command{Fn: info, Usage: "display internal/external IP addresses for nodes"}
+	G_COMMANDS["tag"] = Command{Fn: tag, Usage: "(re)apply tags to each AWS node"}
 }
 
 func main() {
@@ -218,7 +218,7 @@ func sshto() error {
 
 	key := RegionKey(node.KeyName, node.RegionId)
 
-	args := []string {
+	args := []string{
 		"ssh",
 		"-i", key.Filename,
 		"-o", "LogLevel=FATAL",
@@ -227,12 +227,11 @@ func sshto() error {
 		"-o", "ForwardAgent=yes",
 		"-l", G_CONFIG.Aws.Username,
 		node.Instance.DNSName,
-    }
-
-	env := []string {
-		"TERM=" + os.Getenv("TERM"),
 	}
 
+	env := []string{
+		"TERM=" + os.Getenv("TERM"),
+	}
 
 	fmt.Printf("Connecting to %s (%s)...\n", node.Name, node.Instance.InstanceId)
 	closeFrom(3)
@@ -280,7 +279,7 @@ func csshx() error {
 	sshArgs := fmt.Sprintf("-i %s -o LogLevel=FATAL -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardAgent=yes",
 		key.Filename)
 
-	args := []string {
+	args := []string{
 		csshPath,
 		"--ssh_args", sshArgs,
 		"-l", G_CONFIG.Aws.Username,
@@ -293,7 +292,7 @@ func csshx() error {
 		args = append(args, G_CONFIG.Targets[name].Instance.PublicIpAddress)
 	}
 
-	env := []string {
+	env := []string{
 		"HOME=" + os.Getenv("HOME"),
 		"TERM=" + os.Getenv("TERM"),
 	}
@@ -303,8 +302,6 @@ func csshx() error {
 	syscall.Exit(1)
 	return nil
 }
-
-
 
 func hosts() error {
 	// Update all the targets with latest instance info
@@ -371,7 +368,7 @@ func upload() error {
 	key := RegionKey(node.KeyName, node.RegionId)
 
 	// Generate SSH sub-command
-	sshCmd := fmt.Sprintf("ssh -l %s -i %s -o LogLevel=FATAL " +
+	sshCmd := fmt.Sprintf("ssh -l %s -i %s -o LogLevel=FATAL "+
 		"-o StrictHostKeyChecking=no "+
 		"-o UserKnownHostsFile=/dev/null", G_CONFIG.Aws.Username, key.Filename)
 
@@ -379,7 +376,7 @@ func upload() error {
 	rsync := exec.Command("rsync", "-rlptDuvz", "--delete",
 		"--rsync-path=sudo rsync",
 		"-e", sshCmd,
-		G_CONFIG.Salt.RootDir + "/",
+		G_CONFIG.Salt.RootDir+"/",
 		fmt.Sprintf("%s@%s:/srv/salt", G_CONFIG.Aws.Username, node.Instance.DNSName))
 	rsync.Stdout = os.Stdout
 	rsync.Stderr = os.Stdout
@@ -480,8 +477,6 @@ func tag() error {
 		n.Tags.Merge(ARG_TAGS)
 		fmt.Printf("Tagging %s: %s\n", n.Name, n.Tags)
 		return n.ApplyTags()
-	}, 10);
+	}, 10)
 	return nil
 }
-
-

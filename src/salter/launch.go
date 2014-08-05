@@ -73,7 +73,7 @@ func launch() error {
 
 	// Wait for each of the goroutines to shutdown
 	for i := 0; i < G_CONFIG.MaxConcurrent; i++ {
-		<- shutdownQueue
+		<-shutdownQueue
 	}
 
 	return nil
@@ -122,7 +122,6 @@ func ensureMaster() *Node {
 
 	return masterNode
 }
-
 
 func launchNode(node *Node, masterNode *Node) {
 	err := node.Update()
@@ -228,7 +227,7 @@ func distributeKeys(node *Node, master *Node) {
 	pubKey, privKey, _ := node.GenSaltKey(2048)
 
 	// Write the pub key to the master and accept it
-	master.SshUpload("/etc/salt/pki/master/minions_pre/" + node.Name, pubKey)
+	master.SshUpload("/etc/salt/pki/master/minions_pre/"+node.Name, pubKey)
 	master.SshRun("/usr/bin/sudo /usr/bin/salt-key -y -a " + node.Name)
 
 	// Write the pub & private keys to node
@@ -238,4 +237,3 @@ func distributeKeys(node *Node, master *Node) {
 	// Finally, restart minion
 	node.SshRun("/usr/bin/sudo start salt-minion")
 }
-
