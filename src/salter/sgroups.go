@@ -159,6 +159,13 @@ func (perms PermArray) contains(perm ec2.IPPerm) bool {
 		for _, d2 := range s2 {
 			found := false
 			for _, d1 := range s1 {
+				if d1.Name == "amazon-elb-sg" {
+					// If this is the amazon-elb-sg group then we need to
+					// remove the Id field. This is because we manually
+					// populate the group earlier in the setup so it won't
+					// actually have the Id field in the definition.
+					d1.Id = ""
+				}
 				if d2 == d1 {
 					found = true
 					break
@@ -172,11 +179,19 @@ func (perms PermArray) contains(perm ec2.IPPerm) bool {
 	}
 
 	for _, p := range perms {
-		if p.Protocol == perm.Protocol &&
-			p.FromPort == perm.FromPort &&
-			p.ToPort == perm.ToPort &&
-			compareString(p.SourceIPs, perm.SourceIPs) &&
-			compareSG(p.SourceGroups, perm.SourceGroups) {
+
+		switch {
+		case p.Protocol != perm.Protocol:
+			continue
+		case p.FromPort != perm.FromPort:
+			continue
+		case p.ToPort != perm.ToPort:
+			continue
+		case !compareString(p.SourceIPs, perm.SourceIPs):
+			continue
+		case !compareSG(p.SourceGroups, perm.SourceGroups):
+			continue
+		default:
 			return true
 		}
 	}
