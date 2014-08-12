@@ -19,34 +19,42 @@
 // under the License.
 //
 // -------------------------------------------------------------------
+
 package main
 
-import "fmt"
-import "log"
-import "github.com/mitchellh/goamz/aws"
-import "github.com/mitchellh/goamz/ec2"
-import "code.google.com/p/go.crypto/ssh"
-import "crypto/x509"
-import "encoding/pem"
-import "crypto/rand"
-import "crypto/rsa"
-import "bytes"
+import (
+	"bytes"
+	"code.google.com/p/go.crypto/ssh"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+
+	"github.com/mitchellh/goamz/aws"
+	"github.com/mitchellh/goamz/ec2"
+)
 
 type Node struct {
-	Name     string
-	Roles    []string
-	Count    int
-	Flavor   string
-	RegionId string `toml:"region"`
-	Zone     string `toml:"zone"`
-	Ami      string
-	SGroup   string
-	KeyName  string
-	Tags     TagMap
+	// The hostname that the node will be given.
+	Name string `toml:"-"`
 
-	Config    *Config
-	Instance  *ec2.Instance
-	SshClient *ssh.Client
+	// A list of roles that should be defined in the salt configuration.
+	Roles []string `toml:"roles"`
+
+	// The number of nodes of this type that should be created. Each node
+	// will have the "id" name from toml with a number appended to the end
+	// of the name.
+	Count uint `toml:"count"`
+
+	// Tags attached to these nodes.
+	Tags TagMap `toml:"tags"`
+
+	// Allow all the same values found in the AwsConfig value.
+	AwsConfig
+
+	Instance  *ec2.Instance `toml:"-"`
+	SshClient *ssh.Client   `toml:"-"`
 }
 
 func (node *Node) Conn() *ec2.EC2 {
@@ -134,7 +142,7 @@ func (node *Node) Start(masterIp string) error {
 
 	node.Instance = &(runResp.Instances[0])
 
-	fmt.Printf("%s (%s): started\n", node.Name, node.Instance.InstanceId)
+	printf("%s (%s): started\n", node.Name, node.Instance.InstanceId)
 
 	// Instance is now running; apply any tags
 	return node.ApplyTags()
@@ -150,7 +158,7 @@ func (node *Node) Terminate() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s (%s): terminated\n", node.Name, node.Instance.InstanceId)
+	printf("%s (%s): terminated\n", node.Name, node.Instance.InstanceId)
 	node.Instance = nil
 	return nil
 }
@@ -198,7 +206,7 @@ func (node *Node) SshRun(cmd string) error {
 	}
 
 	defer session.Close()
-	log.Printf("%s: %s\n", node.Name, cmd)
+	debugf("%s: %s\n", node.Name, cmd)
 	return session.Run(cmd)
 }
 
@@ -216,7 +224,7 @@ func (node *Node) SshRunOutput(cmd string) ([]byte, error) {
 	}
 
 	defer session.Close()
-	log.Printf("%s: %s\n", node.Name, cmd)
+	debugf("%s: %s\n", node.Name, cmd)
 	return session.CombinedOutput(cmd)
 }
 
@@ -238,7 +246,7 @@ func (node *Node) SshUpload(remoteFilename string, data []byte) error {
 	session.Stdin = bytes.NewReader(data)
 	cmd := fmt.Sprintf("/usr/bin/sudo sh -c '/bin/cat > %s'", remoteFilename)
 	err = session.Run(cmd)
-	log.Printf("%s: uploaded data to %s; error: %+v\n", node.Name, remoteFilename, err)
+	debugf("%s: uploaded data to %s; error: %+v\n", node.Name, remoteFilename, err)
 	return err
 }
 

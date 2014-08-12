@@ -19,13 +19,16 @@
 // under the License.
 //
 // -------------------------------------------------------------------
+
 package main
 
-import "strings"
-import "sync"
-import "github.com/mitchellh/goamz/aws"
-import "github.com/mitchellh/goamz/ec2"
-import "log"
+import (
+	"strings"
+	"sync"
+
+	"github.com/mitchellh/goamz/aws"
+	"github.com/mitchellh/goamz/ec2"
+)
 
 type Region struct {
 	Keys map[string]Key // Key name -> Key (key.go)
@@ -134,7 +137,7 @@ func RegionSGEnsureExists(name string, regionId string) (*RegionalSGroup, error)
 			return nil, err
 		}
 
-		log.Printf("Created security group %s-%s\n", regionId, name)
+		debugf("Created security group %s-%s\n", regionId, name)
 
 		sg.RegionId = regionId
 		sg.SecurityGroup = sgResp.SecurityGroup
@@ -178,7 +181,7 @@ func (r *Region) Refresh() error {
 			// Load the local portion of the key, if it's present
 			keyPtr, err := LoadKey(keyPair.Name, r.dataDir, fingerprint)
 			if err != nil {
-				log.Printf("Unable to load local copy of %s: %+v\n",
+				errorf("Unable to load local copy of %s: %+v\n",
 					keyPair.Name, err)
 				continue
 			}
@@ -199,17 +202,17 @@ func (r *Region) Refresh() error {
 
 		for _, group := range sgroupResp.Groups {
 			// If the group is associated with a VPC we ignore it
-			if group.VpcId != "" {
-				continue
-			}
+			//if group.VpcId != "" {
+			//	continue
+			//}
 			rSgroups[group.Name] = RegionalSGroup{group, r.Conn.Region.Name}
 		}
 
 		// Insert amazon-elb as a valid group
-		amazonElbSg := RegionalSGroup{RegionId: r.Conn.Region.Name}
-		amazonElbSg.Name = "amazon-elb-sg"
-		amazonElbSg.OwnerId = "amazon-elb"
-		rSgroups["amazon-elb-sg"] = amazonElbSg
+		//amazonElbSg := RegionalSGroup{RegionId: r.Conn.Region.Name}
+		//amazonElbSg.Name = "amazon-elb-sg"
+		//amazonElbSg.OwnerId = "amazon-elb"
+		//rSgroups["amazon-elb-sg"] = amazonElbSg
 	}()
 
 	wg.Wait()

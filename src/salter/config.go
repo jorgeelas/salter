@@ -19,42 +19,63 @@
 // under the License.
 //
 // -------------------------------------------------------------------
+
 package main
 
-import "io"
-import "fmt"
-import "os"
-import "path/filepath"
-import "crypto/md5"
-import "github.com/BurntSushi/toml"
-import "github.com/mitchellh/goamz/aws"
-import "text/template"
-import "bytes"
-import "regexp"
+import (
+	"bytes"
+	"crypto/md5"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"regexp"
+	"text/template"
+
+	"github.com/BurntSushi/toml"
+	"github.com/mitchellh/goamz/aws"
+)
 
 type Config struct {
-	Nodes   map[string]Node
-	Tags    map[string]TagMap
 	Aws     AwsConfig
-	Salt    SaltConfig
-	Raw     interface{}
-	Targets map[string]Node
-	SGroups map[string]SGroupConfig
-	AwsAuth aws.Auth
 	DataDir string
+	SGroups map[string]SGroupConfig
+	Salt    SaltConfig
+	Tags    map[string]TagMap
+	Targets map[string]*Node
 
-	UserDataTemplate template.Template
-	MaxConcurrent    int
+	// This is the lsit of raw "Node" configuration elements in the config
+	// file. If a user defines a node named "node" and a count of 5 then
+	// this would contain a single element "node" while the field Nodes
+	// would contain 5 elements, "node1" -> "node5".
+	RawNodes map[string]*Node `toml:"nodes"`
+
+	// None of the following values are provided by the user and as such
+	// we disable tomls ability to populate them.
+
+	// This is populated from environment variables.
+	AwsAuth aws.Auth `toml:"-"`
+
+	// This is the raw data returned from the toml parser.
+	metaData toml.MetaData `toml:"-"`
+
+	// This is the template used when setting up the AWS UserData element
+	// for the cloud-init package.
+	UserDataTemplate template.Template `toml:"-"`
+
+	// This will contain a list of all defined nodes, exploded based on
+	// the count variable.
+	Nodes map[string]*Node `toml:"-"`
 }
 
 type AwsConfig struct {
-	Username string `toml:"ssh_username"`
-	Flavor   string
+	Ami      string `toml:"ami"`
+	Flavor   string `toml:"flavor"`
+	KeyName  string `toml:"keyname"`
 	RegionId string `toml:"region"`
+	SGroup   string `toml:"sgroup"`
+	Username string `toml:"ssh_username"`
 	Zone     string `toml:"zone"`
-	Ami      string
-	SGroup   string
-	KeyName  string
 }
 
 type SGroupConfig struct {
@@ -64,153 +85,167 @@ type SGroupConfig struct {
 type SaltConfig struct {
 	RootDir      string `toml:"root"`
 	Grains       map[string]string
-	Timeout      int
+	Timeout      int    `toml:"timeout"`
 	UserDataFile string `toml:"userdata"`
 }
 
-func NewConfig(filename string, targets []string, all bool) (config Config, err error) {
-	raw, err := toml.DecodeFile(filename, &config)
-	if err != nil {
-		return
+// Loads the configuration from filename.
+func LoadConfig(filename string) (config *Config, err error) {
+	// This is the value we will return on success.
+	config = &Config{}
+
+	// Attempt to load the AWS auth data provided in AWS_ACCESS_KEY and
+	// AWS_SECRET_KEY for use later. Not having these environment variables
+	// is an error at the moment, though in the future this may not be
+	// strictly required.
+	if config.AwsAuth, err = aws.EnvAuth(); err != nil {
+		return nil, err
 	}
 
-	// Inherited fields for a node
-	inheritedFields := []string{"Username", "Flavor", "RegionId", "Ami", "SGroup", "KeyName", "Zone"}
+	// Next we attempt to parse the config file into our configuration
+	// structure using the TOML library.
+	if config.metaData, err = toml.DecodeFile(filename, config); err != nil {
+		return nil, err
+	}
 
-	// Expand the list of nodes so that we have an entry per individual node
-	resolvedNodes := make(map[string]Node)
-	for id, node := range config.Nodes {
-		node.Name = id
-		if node.Count > 0 {
-			// Multiple instances of this type of node have been
-			// requested. It's possible in the config file to
-			// override individual specifications for nodes, so as
-			// we go through and dynamically generate nodes, see if
-			// an override already exists and use it
-			for i := 1; i <= node.Count; i++ {
-				key := fmt.Sprintf("%s%d", id, i)
-
-				// Get the config specific to this key, or fallback
-				// to template base
-				n, exists := config.Nodes[key]
-				if exists {
-					inheritFieldsIfEmpty(&n, node, inheritedFields)
-				} else {
-					n = node
-				}
-
-				// Get the tags specific to this generated node,
-				// or fallback to generic identifier
-				tags, exists := config.Tags[key]
-				if !exists {
-					tags = config.Tags[id]
-				}
-
-				if tags == nil {
-					tags = make(TagMap)
-				}
-
-				inheritFieldsIfEmpty(&n, config.Aws, inheritedFields)
-				n.Name = key
-				n.Count = 0
-				n.Tags = tags
-				n.Config = &config
-
-				resolvedNodes[key] = n
+	// Convert the RawNodes field into the Nodes field by expanding each
+	// node definition out into a fully exploded list of all nodes that are
+	// configured.
+	config.Nodes = make(map[string]*Node, len(config.RawNodes))
+	for id, node := range config.RawNodes {
+		// The easiest case here is that the node has no count. In this case
+		// the node name matches the id and there is no expansion.
+		if node.Count == 0 {
+			// If the node has already been defined then we are likely
+			// processing a "child" of a clustered node definition. In this
+			// case the clustered definition will always win.
+			if _, exist := config.Nodes[id]; exist {
+				continue
 			}
-		} else {
-			inheritFieldsIfEmpty(&node, config.Aws, inheritedFields)
-			node.Config = &config
+
+			// Otherwise we assume that this is a stand alone node, so we
+			// add it using the simple method.
+			nodeData := new(Node)
+			*nodeData = *node
+			nodeData.Name = id
+
+			// We also copy any of the AWS specific configuration into the
+			// node so it can pick up default values like key, or flavor.. etc.
+			inheritFieldsIfEmpty(&nodeData.AwsConfig, &config.Aws)
+
+			// Add the Tags for this node.
 			node.Tags = config.Tags[id]
 			if node.Tags == nil {
 				node.Tags = make(TagMap)
 			}
-			resolvedNodes[id] = node
+
+			// Add the Node to the map.
+			config.Nodes[id] = nodeData
+			continue
+		}
+
+		// In this situation we need to iterate through the count and add each
+		// node to the Nodes map if its not already present. Since a node can
+		// actually be defined as part of a count, AND as a stand alone item
+		// we need to be safe about not overwriting data here.
+		for i := uint(1); i <= node.Count; i++ {
+			name := fmt.Sprintf("%s%d", id, i)
+			nodeData := new(Node)
+			childData, exist := config.RawNodes[name]
+			if exist {
+				// This node has specific configuration. We need to ensure
+				// that data in the specific config is prioritized over data
+				// in the parent node definition we are processing.
+				*nodeData = *childData
+				inheritFieldsIfEmpty(nodeData, node)
+			} else {
+				// Otherwise we can make a copy of the node being processed.
+				*nodeData = *node
+			}
+
+			// Next we populate the Tags field from the config, selecting the
+			// value specific to this node first, and if that doesn't exist
+			// we select the parent value, and barring that we select an empty
+			// TagMap.
+			if tags, exist := config.Tags[name]; exist {
+				nodeData.Tags = tags
+			} else if tags, exist = config.Tags[id]; exist {
+				nodeData.Tags = tags
+			} else {
+				nodeData.Tags = make(TagMap)
+			}
+
+			// We also copy any of the AWS specific configuration into the
+			// node so it can pick up default values like key, or flavor.. etc.
+			inheritFieldsIfEmpty(&nodeData.AwsConfig, &config.Aws)
+
+			// And finally we add it to the map of defined nodes.
+			nodeData.Name = name
+			nodeData.Count = 0
+			config.Nodes[name] = nodeData
 		}
 	}
 
-	// Setup core salt config values
+	// Setup default salter configurations.
 	if config.Salt.Timeout == 0 {
 		config.Salt.Timeout = 60
 	}
-
 	if config.Salt.UserDataFile == "" {
 		config.Salt.UserDataFile = "bootstrap/user.data"
 	}
 
-	// Load AWS auth info from environment
-	auth, err := aws.EnvAuth()
-	if err != nil {
-		err = fmt.Errorf("Failed to load AWS auth from environment: %s\n", err)
-		return
-	}
+	// FIXME
 
 	// If a user-data file is specified, use that to construct a template
 	userDataTemplate, err := template.ParseFiles(config.Salt.UserDataFile)
 	if err != nil {
-		err = fmt.Errorf("Failed to load user data template from %s: %+v\n",
-			config.Salt.UserDataFile, err)
-		return
+		return nil, err
 	}
 	config.UserDataTemplate = *userDataTemplate
 
-	// Initialize our result
-	config.AwsAuth = auth
-	config.MaxConcurrent = 5
-	config.Nodes = resolvedNodes
-	config.Raw = raw
-	config.Targets = make(map[string]Node)
-
-	// Identify all targeted nodes
-	switch {
-	case len(targets) > 0:
-		for _, t := range targets {
-			selectNodes(t, config.Nodes, &(config.Targets))
-		}
-
-		// If no nodes were actually selected; warn and bail
-		if len(config.Targets) < 1 {
-			err = fmt.Errorf("No nodes matched the provided names!")
-			return
-		}
-	case all == true:
-		config.Targets = config.Nodes
-	}
-
-	// Initialize data directory
-	config.initDataDir()
+	// FIXME ^^^^
 
 	return
 }
 
-func selectNodes(target string, nodes map[string]Node, matched *map[string]Node) {
-	if ARG_REGEX {
-		// Try to compile the target into a regex
-		regex, err := regexp.Compile(target)
-		if err != nil {
-			// Not a regex; warn and bail
-			fmt.Printf("%s is not a valid regex: %+v\n", target, err)
-			return
-		}
-
-		// Find all the node names that match our regex
-		for name, node := range nodes {
-			if regex.MatchString(name) {
-				(*matched)[name] = node
-			}
-		}
-	} else {
-		// Find all the node names that match our glob
-		for name, node := range nodes {
-			matches, _ := filepath.Match(target, name)
-			if matches {
-				(*matched)[name] = node
+// This function will automatically select all nodes that match a given
+// glob expression.
+func (c *Config) Glob(targets []string) (map[string]*Node, error) {
+	matches := make(map[string]*Node)
+	for name, node := range c.Nodes {
+		for _, target := range targets {
+			if match, err := filepath.Match(target, name); err != nil {
+				// The only error here that can happen is if the pattern is bad.
+				return nil, err
+			} else if match {
+				matches[name] = node
 			}
 		}
 	}
+	return matches, nil
 }
 
-type UserDataVars struct {
+// Selects all nodes that match a given regular expression.
+func (c *Config) Regex(targets []string) (map[string]*Node, error) {
+	// Compile the regular expression first.
+	// Now Match the nodes.
+	matches := make(map[string]*Node)
+	for _, target := range targets {
+		regex, err := regexp.Compile(target)
+		if err != nil {
+			return nil, err
+		}
+		for name, node := range c.Nodes {
+
+			if regex.MatchString(name) {
+				matches[name] = node
+			}
+		}
+	}
+	return matches, nil
+}
+
+type userDataVars struct {
 	Hostname     string
 	SaltMasterIP string
 	Roles        []string
@@ -222,7 +257,7 @@ type UserDataVars struct {
 func (config *Config) generateUserData(host string, roles []string, masterIp string) ([]byte, error) {
 	var userDataBuf bytes.Buffer
 	err := config.UserDataTemplate.Execute(&userDataBuf,
-		UserDataVars{
+		userDataVars{
 			Hostname:     host,
 			SaltMasterIP: masterIp,
 			Roles:        roles,
@@ -231,7 +266,7 @@ func (config *Config) generateUserData(host string, roles []string, masterIp str
 			Environment:  "test",
 		})
 	if err != nil {
-		fmt.Printf("Failed to generate user-data for %s: %+v\n", host, err)
+		errorf("Failed to generate user-data for %s: %+v\n", host, err)
 		return nil, err
 	}
 	return userDataBuf.Bytes(), nil
@@ -241,29 +276,36 @@ func (config *Config) findNodeByRole(role string) *Node {
 	for _, node := range config.Nodes {
 		for _, r := range node.Roles {
 			if r == role {
-				return &node
+				return node
 			}
 		}
 	}
 	return nil
 }
 
-func (config *Config) initDataDir() {
-	// The data directory is always suffixed with a hash of the AWS access
-	// key + secret to ensure that individual accounts don't tromp all over
-	// each other.
+// Initializes the directory that stores the AWS key used for connecting to
+// nodes. Each directory is a hash of AWS_ACCESS_KEY and AWS_SECRET_KEY in
+// order to ensure that individual accounts don't tromp all over each other.
+// The provided directory is the location that configuration data should
+// be kept.
+func (config *Config) InitDataDir(baseDir string) error {
+	// Generate the hash for the two keys.
 	hash := md5.New()
 	io.WriteString(hash, config.AwsAuth.AccessKey)
 	io.WriteString(hash, config.AwsAuth.SecretKey)
 	hashStr := fmt.Sprintf("%x", hash.Sum(nil))
 
-	config.DataDir = filepath.Join(os.ExpandEnv("$HOME/.salter/data"), hashStr)
+	// Make a data directory for this specific pairing under the
+	// base directory.
+	config.DataDir = filepath.Join(baseDir, "data", hashStr)
 
-	err := os.MkdirAll(config.DataDir, 0700)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to initialize data dir %s: %s\n",
-			config.DataDir, err))
+	// Make the data directory if necessary,
+	if err := os.MkdirAll(config.DataDir, 0700); err != nil {
+		return err
 	}
 
-	fmt.Printf("Using data dir: %s\n", config.DataDir)
+	// Write the directory that is being used for this instance to the debug
+	// logs.
+	debugf("Using data dir: %s\n", config.DataDir)
+	return nil
 }
