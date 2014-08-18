@@ -82,6 +82,8 @@ var ARG_CONFIG_FILE string
 var ARG_ALL bool
 var ARG_SALT_TARGETS string
 var ARG_TAGS TagMap
+var ARG_GLOB bool
+var ARG_REGEX bool
 
 func usage() error {
 	fmt.Println("usage: salter <options> <command>")
@@ -148,6 +150,8 @@ func main() {
 	flag.Var(&ARG_TARGETS, "n", "Target nodes for the operation (overrides -a flag)")
 	flag.StringVar(&ARG_SALT_TARGETS, "s", "'*'", "Targets for salt-related operations")
 	flag.Var(&ARG_TAGS, "t", "Tags to apply")
+	flag.BoolVar(&ARG_GLOB, "g", false, "Use globbing with the -n parameter to select nodes")
+	flag.BoolVar(&ARG_REGEX, "r", false, "Use regexes with the -n parameter to select nodes")
 
 	// Parse it up
 	flag.Parse()
@@ -161,6 +165,21 @@ func main() {
 	// Special cases for -a / -n
 	if flag.Arg(0) == "hosts" {
 		ARG_ALL = true
+	}
+
+	// If not all nodes are selected ensure we have either -g or -r specified
+	if len(ARG_TARGETS) > 0 {
+		if !ARG_GLOB && !ARG_REGEX {
+			fmt.Printf("ERROR: Either -g or -r must be specified when selecting nodes with -n!\n")
+			usage()
+			os.Exit(-1)
+		}
+
+		if ARG_GLOB && ARG_REGEX {
+			fmt.Printf("ERROR: Only one of -g or -r may be used to select nodes with -n.\n")
+			usage()
+			os.Exit(-1)
+		}
 	}
 
 	// Find the command the user is invoking
