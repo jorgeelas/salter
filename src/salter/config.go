@@ -184,18 +184,28 @@ func NewConfig(filename string, targets []string, all bool) (config Config, err 
 }
 
 func selectNodes(target string, nodes map[string]Node, matched *map[string]Node) {
-	// Try to compile the target into a regex
-	regex, err := regexp.Compile(target)
-	if err != nil {
-		// Not a regex; warn and bail
-		fmt.Printf("%s is not a valid regex: %+v\n", target, err)
-		return
-	}
+	if ARG_REGEX {
+		// Try to compile the target into a regex
+		regex, err := regexp.Compile(target)
+		if err != nil {
+			// Not a regex; warn and bail
+			fmt.Printf("%s is not a valid regex: %+v\n", target, err)
+			return
+		}
 
-	// Find all the node names that match our regex
-	for name, node := range nodes {
-		if regex.MatchString(name) {
-			(*matched)[name] = node
+		// Find all the node names that match our regex
+		for name, node := range nodes {
+			if regex.MatchString(name) {
+				(*matched)[name] = node
+			}
+		}
+	} else {
+		// Find all the node names that match our glob
+		for name, node := range nodes {
+			matches, _ := filepath.Match(target, name)
+			if matches {
+				(*matched)[name] = node
+			}
 		}
 	}
 }
