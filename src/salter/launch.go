@@ -2,7 +2,7 @@
 //
 // salter: Tool for bootstrap salt clusters in EC2
 //
-// Copyright (c) 2013 David Smith (dizzyd@dizzyd.com). All Rights Reserved.
+// Copyright (c) 2013-2014 Orchestrate, Inc. All Rights Reserved.
 //
 // This file is provided to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file
@@ -19,12 +19,15 @@
 // under the License.
 //
 // -------------------------------------------------------------------
+
 package main
 
-import "fmt"
-import "time"
-import "code.google.com/p/go.crypto/ssh"
-import "log"
+import (
+	"fmt"
+	"time"
+
+	"code.google.com/p/go.crypto/ssh"
+)
 
 func launch() error {
 	// Make sure a master running
@@ -35,28 +38,27 @@ func launch() error {
 
 	// Remove the master node from targets; we're assured it's already
 	// running
-	delete(G_CONFIG.Targets, masterNode.Name)
+	delete(G_TARGETS, masterNode.Name)
 
 	// Spin up SSH to the master node -- we'll need this to accept the salt
 	// key from minions
 	err := masterNode.SshOpen()
 	if err != nil {
-		fmt.Printf("Unable to open SSH connection to master: %+v\n",
-			err)
+		errorf("Unable to open SSH connection to master: %+v\n", err)
 		return err
 	}
 
 	// Setup a channel for queuing up nodes to launch and another
 	// for shutdown notification
-	launchQueue := make(chan Node)
+	launchQueue := make(chan *Node)
 	shutdownQueue := make(chan bool)
 
 	// Spin up goroutines to start launching nodes; we limit
 	// total number of goroutines to be nice to AWS
-	for i := 0; i < G_CONFIG.MaxConcurrent; i++ {
+	for i := 0; i < ARG_PARALLEL; i++ {
 		go func() {
 			for node := range launchQueue {
-				launchNode(&node, masterNode)
+				launchNode(node, masterNode)
 			}
 
 			shutdownQueue <- true
@@ -64,7 +66,7 @@ func launch() error {
 	}
 
 	// Start enqueuing targets to launch
-	for _, node := range G_CONFIG.Targets {
+	for _, node := range G_TARGETS {
 		launchQueue <- node
 	}
 
@@ -72,7 +74,7 @@ func launch() error {
 	close(launchQueue)
 
 	// Wait for each of the goroutines to shutdown
-	for i := 0; i < G_CONFIG.MaxConcurrent; i++ {
+	for i := 0; i < ARG_PARALLEL; i++ {
 		<-shutdownQueue
 	}
 
@@ -88,14 +90,14 @@ func ensureMaster() *Node {
 	masterNode := G_CONFIG.findNodeByRole("saltmaster")
 	if masterNode == nil {
 		// No saltmaster role defined; we can't setup a cluster without it!
-		fmt.Printf("None of the nodes are associated with a saltmaster role!\n")
+		errorf("None of the nodes are associated with a saltmaster role!\n")
 		return nil
 	}
 
 	// Grab latest state of master node
 	err := masterNode.Update()
 	if err != nil {
-		fmt.Printf("Unable to update state of %s node from AWS: %+v\n",
+		errorf("Unable to update state of %s node from AWS: %+v\n",
 			masterNode.Name, err)
 		return nil
 	}
@@ -104,7 +106,7 @@ func ensureMaster() *Node {
 		// Not yet running, start it (designating master as localhost)
 		err := masterNode.Start("127.0.0.1")
 		if err != nil {
-			fmt.Printf("Unable to start node %s: %+v\n", masterNode.Name, err)
+			errorf("Unable to start node %s: %+v\n", masterNode.Name, err)
 			return nil
 		}
 	}
@@ -126,14 +128,14 @@ func ensureMaster() *Node {
 func launchNode(node *Node, masterNode *Node) {
 	err := node.Update()
 	if err != nil {
-		fmt.Printf("Unable to update status of %s node from AWS: %+v\n",
+		errorf("Unable to update status of %s node from AWS: %+v\n",
 			node.Name, err)
 		return
 	}
 
 	err = node.Start(masterNode.Instance.PrivateIpAddress)
 	if err != nil {
-		fmt.Printf("Failed to start %s: %+v\n", node.Name, err)
+		errorf("Failed to start %s: %+v\n", node.Name, err)
 		return
 	}
 
@@ -141,7 +143,7 @@ func launchNode(node *Node, masterNode *Node) {
 	// cloud-init to finish
 	err = waitForRunning(node)
 	if err != nil {
-		fmt.Printf("Failed to launch %s: %+v\n", node.Name, err)
+		errorf("Failed to launch %s: %+v\n", node.Name, err)
 		return
 	}
 
@@ -155,11 +157,12 @@ func displayNodeInfo(node *Node) {
 	// Get the uptime from the node for display purposes
 	uptime, err := node.SshRunOutput("uptime")
 	if err != nil {
-		log.Printf("Failed to get uptime for %s: %+v\n", node.Name, err)
+		debugf("Failed to get uptime for %s: %+v\n", node.Name, err)
 	}
 
 	// Display launch info
-	fmt.Printf("%s (%s): running %s", node.Name, node.Instance.PublicIpAddress, uptime)
+	printf("%s (%s): running %s\n", node.Name, node.Instance.PublicIpAddress,
+		uptime)
 }
 
 func waitForRunning(node *Node) error {

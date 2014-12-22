@@ -2,7 +2,7 @@
 //
 // salter: Tool for bootstrap salt clusters in EC2
 //
-// Copyright (c) 2013 David Smith (dizzyd@dizzyd.com). All Rights Reserved.
+// Copyright (c) 2013-2014 Orchestrate, Inc. All Rights Reserved.
 //
 // This file is provided to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file
@@ -19,11 +19,15 @@
 // under the License.
 //
 // -------------------------------------------------------------------
+
 package main
 
-import "os"
-import "reflect"
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"reflect"
+	"sync"
+)
 
 func FileExists(filename string) bool {
 	_, err := os.Stat(filename)
@@ -88,70 +92,79 @@ func pForEachValue(m interface{}, f interface{}, concurrent int) {
 	close(doneQueue)
 }
 
-func inheritFieldsIfEmpty(to interface{}, from interface{}, fieldNames []string) {
-	toVal := reflect.Indirect(reflect.ValueOf(to))
-	fromVal := reflect.ValueOf(from)
+// Fields inherited from an old to a new node.
+var inheritedFields map[string]bool = map[string]bool{
+	"Ami":      true,
+	"Flavor":   true,
+	"KeyName":  true,
+	"RegionId": true,
+	"SGroup":   true,
+	"Username": true,
+	"Zone":     true,
+}
 
-	for _, field := range fieldNames {
-		toField := toVal.FieldByName(field)
-		if isEmpty(toField) {
-			fromField := fromVal.FieldByName(field)
-			toField.Set(fromField)
+func inheritFieldsIfEmpty(to interface{}, from interface{}) {
+	toVal := reflect.ValueOf(to).Elem()
+	fromVal := reflect.ValueOf(from).Elem()
+
+	// Ensure that the types of the two objects are the same, otherwise
+	// nothing in this function will work.
+	if toVal.Type() != fromVal.Type() {
+		panic(fmt.Errorf("%T and %T are not the same.", to, from))
+	}
+
+	// Walk through each field, if its name matches one of the ones in
+	// the inheritedFields map then we check to see if the value is default
+	// and if so we copy from the 'from' value into the 'to' value.
+	for i := 0; i < toVal.NumField(); i++ {
+		name := toVal.Type().Field(i).Name
+		if _, ok := inheritedFields[name]; !ok {
+			// Its not a field we care to copy.
+			continue
 		}
+		toField := toVal.Field(i)
+
+		// Check to see if the to field is empty (zero). If it is not empty
+		// then something was set and as such no copy should be done.
+		zero := reflect.Zero(toField.Type()).Interface()
+		if toVal.Field(i).Interface() != zero {
+			continue
+		}
+
+		// The field exists and is empty, copy the contents from the 'from'
+		// value's field into the 'to' field.
+		fromField := fromVal.FieldByName(name)
+		toField.Set(fromField)
 	}
 }
 
-func isEmpty(v reflect.Value) bool {
-	if !v.IsValid() {
-		return false
+// Contacts AWS and updates the data for all of the nodes in parallel.
+// The number here is the number of concurrent operations that we should
+// perform.
+func updateNodes(nodes map[string]*Node, parallel int) (err error) {
+	runQueue := make(chan *Node, len(nodes))
+	wg := sync.WaitGroup{}
+	wg.Add(parallel)
+	for i := 0; i < parallel; i++ {
+		go func() {
+			defer wg.Done()
+			for {
+				if node, open := <-runQueue; !open {
+					return
+				} else if err2 := node.Update(); err2 != nil {
+					err = err2
+				}
+
+			}
+		}()
 	}
 
-	switch v.Kind() {
-	case reflect.Int:
-		return v.Int() == 0
-	case reflect.Int8:
-		return v.Int() == 0
-	case reflect.Int16:
-		return v.Int() == 0
-	case reflect.Int32:
-		return v.Int() == 0
-	case reflect.Int64:
-		return v.Int() == 0
-	case reflect.Uint:
-		return v.Uint() == 0
-	case reflect.Uint8:
-		return v.Uint() == 0
-	case reflect.Uint16:
-		return v.Uint() == 0
-	case reflect.Uint32:
-		return v.Uint() == 0
-	case reflect.Uint64:
-		return v.Uint() == 0
-	case reflect.Float32:
-		return v.Int() == 0.0
-	case reflect.Float64:
-		return v.Int() == 0.0
-	case reflect.Complex64:
-		return v.Int() == 0.0
-	case reflect.Complex128:
-		return v.Int() == 0.0
-	case reflect.Array:
-		return v.IsNil()
-	case reflect.Chan:
-		return v.IsNil()
-	case reflect.Func:
-		return v.IsNil()
-	case reflect.Interface:
-		return v.IsNil()
-	case reflect.Map:
-		return v.IsNil()
-	case reflect.Ptr:
-		return v.IsNil()
-	case reflect.Slice:
-		return v.IsNil()
-	case reflect.String:
-		return v.Len() == 0
-	default:
-		panic(fmt.Sprintf("IsEmpty() unexpected value kind: %+v\n", v))
+	// Inject the nodes into the runQueue and then wait for the WaitGroup
+	// so we know when the whole thing has finished.
+	for _, node := range nodes {
+		runQueue <- node
 	}
+	close(runQueue)
+	wg.Wait()
+	return err
 }

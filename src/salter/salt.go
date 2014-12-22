@@ -2,7 +2,7 @@
 //
 // salter: Tool for bootstrap salt clusters in EC2
 //
-// Copyright (c) 2013 David Smith (dizzyd@dizzyd.com). All Rights Reserved.
+// Copyright (c) 2013-2014 Orchestrate, Inc. All Rights Reserved.
 //
 // This file is provided to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file
@@ -19,101 +19,137 @@
 // under the License.
 //
 // -------------------------------------------------------------------
+
 package main
 
-import "fmt"
-import "log"
-import "encoding/json"
-import "sort"
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"unicode/utf8"
+)
 
+// This is the JSON structure returned for each host after a highstate.
 type HighstateHost map[string]HighstateEntry
 
-type HighstateEntry struct {
-	Comment string
-	Changes map[string]interface{}
-	Result  bool
+// Walks through all the results in a HighstateHost result and summarize them
+// into simple counts.
+func (h HighstateHost) Summarize(host string) (states, changes, errors int) {
+	states = len(h)
+	for id, entry := range h {
+		if !entry.Result {
+			errors += 1
+			debugf("%s: Highstate error in '%s': %s\n", host, id, entry.Comment)
+		} else if len(entry.Changes) > 0 {
+			changes += len(entry.Changes)
+			debugf("%s: Highstate change '%s': %s\n", host, id, entry.Comment)
+		}
+	}
+	return
 }
 
+// This is a specific item from a host's highstate report. This structure
+// is defined by the salt API. Each state is represented in a HighstateEntry.
+type HighstateEntry struct {
+	// A string comment about the state.
+	Comment string `json:"comment"`
+
+	// A map of all the changes made by this state.
+	Changes map[string]interface{} `json:"changes"`
+
+	// True if the state executed successfully.
+	Result bool `jason:"result"`
+}
+
+// Attempts to SSH into 'master' in order to highstate the given targets.
 func saltHighstate(master *Node, targets string) error {
 	if targets == "" {
-		fmt.Printf("No salt targets (-s) specified for highstate operation.\n")
-		return nil
+		// If the -s argument was not specified then we need to report the
+		// error then terminate.
+		fatalf("No salt targets (-s) specified for highstate operation.\n")
+		os.Exit(1)
 	}
 
-	cmd := fmt.Sprintf("sudo salt '%s' -t %d --output=json --static state.highstate",
-		targets,
-		G_CONFIG.Salt.Timeout)
+	// Execute the SSH command.
+	cmd := fmt.Sprintf(
+		"sudo salt '%s' -t %d --output=json --static state.highstate",
+		targets, G_CONFIG.Salt.Timeout)
 	out, err := master.SshRunOutput(cmd)
 	if err != nil {
-		log.Printf("%s: %s failed - %+v\n", master.Name, cmd, err)
+		debugf("Error during highstate process: %s\nMaster: %s\nCommand: %s\n",
+			err, master.Name, cmd)
 		return err
 	}
 
-	var raw interface{}
-	err = json.Unmarshal(out, &raw)
-
-	if err != nil {
-		fmt.Printf("JSON parse error: %s\nRaw output: %s\n", err, out)
+	// Attempt to unmarshal the returned JSON data.
+	var hosts map[string]json.RawMessage
+	if err = json.Unmarshal(out, &hosts); err != nil {
+		debugf("Error parsing JSON returned from salt: %s\nCommand: %s\n"+
+			"Raw data: %#v\n", err, cmd, out)
 		return err
 	}
 
-	report := make([]string, 0)
+	// This is the reporting output, indexed by host name.
+	report := make(map[string]string, 0)
 
-	hosts := raw.(map[string]interface{})
-	for host, info := range hosts {
-		// Attempt to convert the raw info into highstate host; if it fails, we assume that
-		// salt is giving some error message and report accordingly
-		entries := toHighstateHost(info)
-		if entries == nil {
-			formatted, _ := json.MarshalIndent(info, "", "\t")
-			fmt.Printf("%s: %s\n", host, formatted)
+	for host, raw := range hosts {
+		// First step is to try and parse the individual node response into
+		// a HighstateEntry item. If this succeeds then the result is a
+		// successful highstate, otherwise the response is likely a string
+		// error message.
+		var items HighstateHost
+		if err := json.Unmarshal(raw, &items); err != nil {
+			if msg, err := json.MarshalIndent(raw, "", "\t"); err != nil {
+				// Inform the user.
+				debugf("Error highstating %s: %s\n", host, raw)
+
+				// Add a line to the report.
+				report[host] = "Error while highstating."
+			} else {
+				// Inform the user.
+				debugf("Bad JSON highstate reply while highstating %s:\n%s\n",
+					host, msg)
+
+				// Add a line to the report.
+				report[host] = "Error while highstating."
+			}
 			continue
 		}
 
-		// Check each of the entries and look for any errors
-		changes := 0
-		errors := 0
-		for id, entry := range *entries {
-			entryChanges := len(entry.Changes)
-			changes += entryChanges
-			if !entry.Result {
-				errors += 1
-				log.Printf("ERR %s.%s: %s\n", host, id, entry.Comment)
-			} else if entryChanges > 0 {
-				log.Printf("CHG %s.%s: %s\n", host, id, entry.Comment)
-			}
+		// If we get here then the message was a valid HighStateHost
+		// structure and therefor we can use it to count changes/errors/etc.
+		states, changes, errors := items.Summarize(host)
+		debugf("%s Highstate results: %d errors, %d changes, %d states.\n",
+			host, errors, changes, states)
+
+		// Add the results to the map we will display to the user.
+		report[host] = fmt.Sprintf("%d errors, %d changes, %d states.",
+			errors, changes, states)
+	}
+
+	// Walk through the keys (hostnames) calculating the longest name in the
+	// group and adding them to a list that we can use for sorting.
+	longestName := 0
+	keys := make([]string, 0, len(report))
+	for host, _ := range hosts {
+		runes := utf8.RuneCountInString(host)
+		if runes > longestName {
+			longestName = runes
 		}
-		log.Printf("%s: summary: %d errors, %d changes, %d states.\n", host, errors, changes, len(*entries))
+		keys = append(keys, host)
+	}
+	sort.Strings(keys)
+	longestName += 2
 
-		// Add the line to the report we'll print
-		line := fmt.Sprintf("%20s:\t%d errors\t%d changes\t%d states.\n", host, errors, changes, len(*entries))
-		report = append(report, line)
+	// Walk through the results and display them in sorted order.
+	for _, host := range keys {
+		hostLen := utf8.RuneCountInString(host)
+		pad := strings.Repeat(" ", longestName-hostLen)
+		printf("%s:%s%s\n", host, pad, report[host])
 	}
 
-	// Sort the lines in the report and print
-	sort.Strings(report)
-	for _, l := range report {
-		fmt.Print(l)
-	}
-
+	// Success
 	return nil
-}
-
-// Attempt to take a chunk of generic JSON and convert into a HighstateHost
-//
-// It's unfortunate that the JSON library doesn't deal with unexpected data more
-// gracefully. This unmarshal-to-generic, remarshal-attempt-unmarshal dance is
-// lame.
-func toHighstateHost(data interface{}) *HighstateHost {
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		return nil
-	}
-
-	var result HighstateHost
-	err = json.Unmarshal(bytes, &result)
-	if err != nil {
-		return nil
-	}
-	return &result
 }

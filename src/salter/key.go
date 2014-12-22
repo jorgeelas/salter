@@ -2,7 +2,7 @@
 //
 // salter: Tool for bootstrap salt clusters in EC2
 //
-// Copyright (c) 2013 David Smith (dizzyd@dizzyd.com). All Rights Reserved.
+// Copyright (c) 2013-2014 Orchestrate, Inc. All Rights Reserved.
 //
 // This file is provided to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file
@@ -19,21 +19,25 @@
 // under the License.
 //
 // -------------------------------------------------------------------
+
 package main
 
-import "crypto/rsa"
-import "crypto/sha1"
-import "crypto/x509"
-import "crypto/x509/pkix"
-import "encoding/asn1"
-import "encoding/pem"
-import "fmt"
-import "io/ioutil"
-import "crypto/rand"
-import "crypto/md5"
-import "path/filepath"
-import "os"
-import "code.google.com/p/go.crypto/ssh"
+import (
+	"crypto/md5"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha1"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/pem"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+
+	"code.google.com/p/go.crypto/ssh"
+)
 
 type Key struct {
 	Name        string
@@ -70,7 +74,8 @@ func LoadKey(keyName, keyDir, remoteFingerprint string) (*Key, error) {
 		// Ensure the key file is not og accessible
 		info, _ := os.Stat(filename)
 		if info.Mode().Perm() != 0600 {
-			fmt.Printf("WARNING: incorrect perms on key %s - %s\n", filename, info.Mode().Perm())
+			errorf("WARNING: incorrect perms on key %s - %s\n",
+				filename, info.Mode().Perm())
 		}
 
 		// Read the whole PEM file
@@ -141,7 +146,8 @@ func generateKey(filename string, bits int) error {
 func PublicKeyAuth(k Key) []ssh.AuthMethod {
 	authKey, err := ssh.NewSignerFromKey(&(k.Key))
 	if err != nil {
-		fmt.Printf("Failed to construct public key auth struct from %s: %+v\n", k.Name, err)
+		errorf("Failed to construct public key auth struct from %s: %+v\n",
+			k.Name, err)
 		return nil
 	}
 	return []ssh.AuthMethod{ssh.PublicKeys(authKey)}

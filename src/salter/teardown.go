@@ -2,7 +2,7 @@
 //
 // salter: Tool for bootstrap salt clusters in EC2
 //
-// Copyright (c) 2013 David Smith (dizzyd@dizzyd.com). All Rights Reserved.
+// Copyright (c) 2013-2014 Orchestrate, Inc. All Rights Reserved.
 //
 // This file is provided to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file
@@ -19,29 +19,28 @@
 // under the License.
 //
 // -------------------------------------------------------------------
-package main
 
-import "fmt"
+package main
 
 func teardown() error {
 	// Setup a channel for queuing requests for teardown and another
 	// for shutdown notification
-	teardownQueue := make(chan Node)
+	teardownQueue := make(chan *Node)
 	shutdownQueue := make(chan bool)
 
 	// Spin up goroutines to start tearing down nodes; we limit
 	// total number of goroutines to be nice to AWS
-	for i := 0; i < G_CONFIG.MaxConcurrent; i++ {
+	for i := 0; i < ARG_PARALLEL; i++ {
 		go func() {
 			for node := range teardownQueue {
-				teardownNode(&node)
+				teardownNode(node)
 			}
 			shutdownQueue <- true
 		}()
 	}
 
 	// Walk all the target nodes, queuing up teardown requests
-	for _, node := range G_CONFIG.Targets {
+	for _, node := range G_TARGETS {
 		teardownQueue <- node
 	}
 
@@ -49,7 +48,7 @@ func teardown() error {
 	close(teardownQueue)
 
 	// Wait for each of the goroutines to shutdown
-	for i := 0; i < G_CONFIG.MaxConcurrent; i++ {
+	for i := 0; i < ARG_PARALLEL; i++ {
 		<-shutdownQueue
 	}
 
@@ -59,13 +58,13 @@ func teardown() error {
 func teardownNode(node *Node) {
 	err := node.Update()
 	if err != nil {
-		fmt.Printf("%s: not terminated; %+v\n", node.Name, err)
+		printf("%s: not terminated; %+v\n", node.Name, err)
 		return
 	}
 
 	err = node.Terminate()
 	if err != nil {
-		fmt.Printf("%s: not terminated; %+v\n", node.Name, err)
+		printf("%s: not terminated; %+v\n", node.Name, err)
 		return
 	}
 
