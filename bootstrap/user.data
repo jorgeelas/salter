@@ -29,6 +29,7 @@ mine_functions:
     - eth1
   disk.usage: []
   grains.item:
+    - ipv4
     - roles
     - ec2_info
     - ec2_local-ipv4
