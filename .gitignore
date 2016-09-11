@@ -1,5 +1,4 @@
 bin
 pkg
-.vendor
-.goop
 *.swp
+salter
